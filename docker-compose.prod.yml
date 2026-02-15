@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  lotificaciones-app:
+    image: josedaniel001/lotificaciones-system2-lotificaciones-app:latest
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+    env_file:
+      - .env
+    restart: unless-stopped
+    volumes:
+      - ./public:/app/public
+      - ./uploads:/app/uploads

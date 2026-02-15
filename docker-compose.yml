@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  lotificaciones-app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+    env_file:
+      - .env
+    restart: unless-stopped
+    volumes:
+      - ./public:/app/public
+      - ./uploads:/app/uploads
