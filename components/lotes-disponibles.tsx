@@ -25,6 +25,8 @@ import { usePagination } from "@/hooks/use-pagination"
 import { lotesService, mapLoteFromApi, mapLoteToApi, type Lote } from "@/lib/lotes-service"
 import { BackendStatus } from "@/components/backend-status"
 import { useConfiguracion } from "@/hooks/use-configuracion"
+import { PlanosViewer } from "@/components/planos-viewer"
+import { planosService } from "@/lib/planos-service"
 
 interface LoteDisponible {
   id: string
@@ -54,9 +56,66 @@ export function LotesDisponibles() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  
+  // Estados para planos
+  const [planoUrl, setPlanoUrl] = useState<string | null>(null)
+  const [planoNombre, setPlanoNombre] = useState<string>("")
+  const [planoEsPdf, setPlanoEsPdf] = useState<boolean>(false)
+  const [planoEsImagen, setPlanoEsImagen] = useState<boolean>(false)
+  const [isLoadingPlano, setIsLoadingPlano] = useState(true)
 
   // Obtener configuración para la tasa anual
   const { configuracionActiva } = useConfiguracion()
+
+  // Cargar planos desde el backend
+  useEffect(() => {
+    const cargarPlano = async () => {
+      try {
+        setIsLoadingPlano(true)
+        const plano = await planosService.getPlano()
+        if (plano) {
+          // Construir la URL completa del plano
+          const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+          setPlanoUrl(plano.url.startsWith('http') ? plano.url : `${baseUrl}${plano.url}`)
+          setPlanoNombre(plano.nombre)
+          setPlanoEsPdf(plano.es_pdf || false)
+          setPlanoEsImagen(plano.es_imagen || false)
+        }
+      } catch (err) {
+        console.error('Error cargando plano:', err)
+        // No mostrar error si no hay planos, es normal
+      } finally {
+        setIsLoadingPlano(false)
+      }
+    }
+    
+    cargarPlano()
+  }, [])
+
+  // Función para subir plano
+  const handleUploadPlano = async (file: File) => {
+    try {
+      let plano
+      if (planoUrl) {
+        // Si ya existe un plano, actualizarlo
+        // Necesitamos el ID del plano, por ahora crearemos uno nuevo
+        plano = await planosService.subirPlano(file)
+      } else {
+        // Crear nuevo plano
+        plano = await planosService.subirPlano(file)
+      }
+      
+      // Actualizar estado con el nuevo plano
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+      setPlanoUrl(plano.url.startsWith('http') ? plano.url : `${baseUrl}${plano.url}`)
+      setPlanoNombre(plano.nombre)
+      setPlanoEsPdf(plano.es_pdf || false)
+      setPlanoEsImagen(plano.es_imagen || false)
+    } catch (err: any) {
+      console.error('Error subiendo plano:', err)
+      throw new Error(err.message || 'Error al subir el plano')
+    }
+  }
 
   // Cargar lotes desde el backend
   useEffect(() => {
@@ -395,6 +454,16 @@ export function LotesDisponibles() {
 
   return (
     <div className="space-y-6">
+      {/* Planos de Lotificación */}
+      <PlanosViewer
+        planoUrl={planoUrl}
+        planoNombre={planoNombre}
+        esPdf={planoEsPdf}
+        esImagen={planoEsImagen}
+        onUpload={handleUploadPlano}
+        isLoading={isLoadingPlano}
+      />
+
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
