@@ -112,7 +112,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       let errorMessage = "Error de conexión"
       if (error instanceof ApiError) {
-        if (error.status === 401) {
+        if (error.status === 0 || error.data?.type === 'CONNECTION_ERROR') {
+          errorMessage = error.message || "No se puede conectar al servidor. Verifica que Django esté corriendo en http://localhost:8000"
+        } else if (error.status === 401) {
           errorMessage = "Credenciales incorrectas"
         } else if (error.status === 400) {
           errorMessage = error.data?.detail || "Datos de entrada inválidos"

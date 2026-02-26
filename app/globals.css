@@ -123,3 +123,22 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Estilos para lotes interactivos en SVG */
+.lote-interactivo {
+  transition: opacity 0.2s ease, stroke-width 0.1s ease, fill-opacity 0.2s ease;
+}
+
+.lote-interactivo.is-hover {
+  stroke-width: 3 !important;
+  stroke: #000 !important;
+}
+
+.lote-filtered-out {
+  opacity: 0.2 !important;
+  pointer-events: none;
+}
+
+.lote-interactivo:not(.lote-filtered-out) {
+  opacity: 1 !important;
+}

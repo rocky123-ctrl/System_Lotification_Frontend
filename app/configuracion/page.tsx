@@ -1,10 +1,10 @@
-import { Configuracion } from "@/components/configuracion"
+import { Lotificaciones } from "@/components/lotificaciones"
 import { DashboardLayout } from "@/components/dashboard-layout"
 
-export default function ConfiguracionPage() {
+export default function LotificacionesPage() {
   return (
     <DashboardLayout>
-      <Configuracion />
+      <Lotificaciones />
     </DashboardLayout>
   )
 }

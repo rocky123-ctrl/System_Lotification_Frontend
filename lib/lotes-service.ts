@@ -1,21 +1,22 @@
 import { apiRequest } from './api'
 
 // Interfaces para los lotes
+export type LoteEstado = 'disponible' | 'reservado' | 'pagado' | 'comercial_y_bodega' | 'financiado' | 'pagado_y_escriturado'
+
 export interface Lote {
   id: number
   manzana: number
   numero_lote: string
   metros_cuadrados: string
   valor_total: string
-  saldo_financiar: string // Saldo a financiar para el módulo de financiamiento
-  enganche: string
+  saldo_financiar?: string
   costo_instalacion: string
-  plazo_meses: number
-  cuota_mensual: string
-  estado: 'disponible' | 'reservado' | 'vendido' | 'en_proceso' | 'cancelado'
-  created_at: string
-  updated_at: string
-  manzana_nombre?: string // Nombre de la manzana
+  estado: LoteEstado
+  version?: number
+  created_at?: string
+  updated_at?: string
+  manzana_nombre?: string
+  lotificacion_nombre?: string
 }
 
 export interface LoteCreate {
@@ -23,18 +24,23 @@ export interface LoteCreate {
   numero_lote: string
   metros_cuadrados: string
   valor_total: string
-  enganche: string
   costo_instalacion: string
-  plazo_meses: number
-  cuota_mensual: string
-  estado: 'disponible' | 'reservado' | 'vendido' | 'en_proceso' | 'cancelado'
+  estado: LoteEstado
 }
 
-export interface LoteUpdate extends Partial<LoteCreate> {}
+export interface LoteUpdate {
+  version: number
+  metros_cuadrados?: string
+  valor_total?: string
+  costo_instalacion?: string
+  estado?: LoteEstado
+  activo?: boolean
+}
 
 export interface LotesFilters {
+  lotificacion?: number
   manzana?: string
-  estado?: 'disponible' | 'reservado' | 'vendido' | 'en_proceso' | 'cancelado'
+  estado?: LoteEstado
   precio_min?: number
   precio_max?: number
   metros_min?: number
@@ -62,6 +68,7 @@ export const lotesService = {
     const params = new URLSearchParams()
     
     if (filters) {
+      if (filters.lotificacion) params.append('lotificacion', filters.lotificacion.toString())
       if (filters.manzana) params.append('manzana', filters.manzana)
       if (filters.estado) params.append('estado', filters.estado)
       if (filters.precio_min) params.append('precio_min', filters.precio_min.toString())
@@ -74,7 +81,16 @@ export const lotesService = {
     const queryString = params.toString()
     const endpoint = queryString ? `/lotes/lotes/?${queryString}` : '/lotes/lotes/'
     
-    return apiRequest<Lote[]>(endpoint)
+    const response = await apiRequest<any>(endpoint)
+    // Manejar respuesta paginada o array directo
+    if (Array.isArray(response)) {
+      return response
+    }
+    // Si viene paginado, extraer results
+    if (response && response.results && Array.isArray(response.results)) {
+      return response.results
+    }
+    return []
   },
 
   // Obtener un lote específico por ID

@@ -33,7 +33,8 @@ import {
   Loader2,
   Plus,
   Eye,
-  BarChart3
+  BarChart3,
+  Map
 } from "lucide-react"
 import { useConfiguracion } from "@/hooks/use-configuracion"
 import { 
@@ -46,6 +47,7 @@ import {
   type ConfiguracionGeneralCreate,
   type ConfiguracionFinancieraCreate
 } from "@/lib/configuracion-service"
+import { InteractiveSVGViewer } from "@/components/interactive-svg-viewer"
 
 export function Configuracion() {
   const { 
@@ -62,6 +64,11 @@ export function Configuracion() {
   const [isGeneralDialogOpen, setIsGeneralDialogOpen] = useState(false)
   const [isFinancieraDialogOpen, setIsFinancieraDialogOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  
+  // Estados para SVG interactivo
+  const [svgContent, setSvgContent] = useState<string | undefined>(undefined)
+  const [svgFile, setSvgFile] = useState<File | null>(null)
+  const [isUploadingSvg, setIsUploadingSvg] = useState(false)
 
   // Formulario configuración general
   const [formGeneral, setFormGeneral] = useState<ConfiguracionGeneralCreate>({
@@ -322,6 +329,10 @@ export function Configuracion() {
           <TabsTrigger value="financiera" className="flex items-center gap-2">
             <DollarSign className="h-4 w-4" />
             Configuración Financiera
+          </TabsTrigger>
+          <TabsTrigger value="plano" className="flex items-center gap-2">
+            <Map className="h-4 w-4" />
+            Plano Interactivo
           </TabsTrigger>
         </TabsList>
 
@@ -751,6 +762,74 @@ export function Configuracion() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Tab de Plano Interactivo */}
+      <TabsContent value="plano" className="space-y-4">
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>Plano Interactivo de Lotificación</CardTitle>
+                <CardDescription>
+                  Carga un archivo SVG y visualiza los lotes de forma interactiva
+                </CardDescription>
+              </div>
+              <div>
+                <input
+                  type="file"
+                  id="svg-upload"
+                  accept=".svg"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0]
+                    if (file) {
+                      setSvgFile(file)
+                      setIsUploadingSvg(true)
+                      try {
+                        const reader = new FileReader()
+                        reader.onload = (event) => {
+                          const content = event.target?.result as string
+                          setSvgContent(content)
+                          setIsUploadingSvg(false)
+                        }
+                        reader.readAsText(file)
+                      } catch (error) {
+                        console.error("Error cargando SVG:", error)
+                        setIsUploadingSvg(false)
+                      }
+                    }
+                  }}
+                  className="hidden"
+                />
+                <Label htmlFor="svg-upload">
+                  <Button variant="outline" asChild>
+                    <span>
+                      {isUploadingSvg ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Cargando...
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="h-4 w-4 mr-2" />
+                          {svgContent ? "Cambiar SVG" : "Cargar SVG"}
+                        </>
+                      )}
+                    </span>
+                  </Button>
+                </Label>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <InteractiveSVGViewer
+              svgContent={svgContent}
+              onLoteClick={(loteId) => {
+                console.log("Lote clickeado:", loteId)
+              }}
+            />
+          </CardContent>
+        </Card>
+      </TabsContent>
     </div>
   )
 }

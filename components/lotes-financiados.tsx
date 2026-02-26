@@ -32,7 +32,6 @@ import { PaymentReceipt } from "@/components/ui/payment-receipt"
 import { Plus, Search, Filter, Download, Edit, Trash2, CreditCard, Loader2, AlertTriangle, Clock, MoreHorizontal } from "lucide-react"
 import { usePagination } from "@/hooks/use-pagination"
 import { useReceipt } from "@/hooks/use-receipt"
-import { useConfiguracion } from "@/hooks/use-configuracion"
 import { 
   financiamientoService, 
   mapFinanciamientoFromApi, 
@@ -163,7 +162,8 @@ export function LotesFinanciados() {
   const [cargandoPagos, setCargandoPagos] = useState<{ [key: number]: boolean }>({})
 
   // Obtener configuración para cálculos
-  const { configuracionActiva, configuracionFinanciera } = useConfiguracion()
+  // Tasa anual por defecto (ya que Lotificacion no tiene este campo)
+  const TASA_ANUAL_DEFAULT = 12
 
   // Cargar financiamientos al montar el componente
   useEffect(() => {
@@ -283,7 +283,7 @@ export function LotesFinanciados() {
 
   // Función para calcular cuota automáticamente
   const calcularCuotaAutomatica = (saldoFinanciar: number, enganche: number, plazoMeses: number) => {
-    const tasaAnual = configuracionActiva ? parseFloat(configuracionActiva.tasa_anual) : 12
+    const tasaAnual = TASA_ANUAL_DEFAULT
     const tasaMensual = tasaAnual / 100 / 12
     
     // Fórmula de amortización francesa usando el saldo a financiar

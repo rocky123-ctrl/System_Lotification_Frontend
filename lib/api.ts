@@ -2,6 +2,20 @@ import { config as appConfig } from './config'
 
 const API_BASE_URL = appConfig.api.baseUrl + '/api'
 
+// Función para redirigir al login cuando el token expire
+export function redirectToLogin() {
+  // Solo redirigir si estamos en el cliente (navegador)
+  if (typeof window !== 'undefined') {
+    console.log('[API] Redirigiendo al login debido a token expirado')
+    // Limpiar todos los datos de autenticación antes de redirigir
+    localStorage.removeItem(appConfig.auth.tokenKey)
+    localStorage.removeItem(appConfig.auth.refreshTokenKey)
+    localStorage.removeItem('lotificacion_user')
+    // Redirigir al login
+    window.location.href = '/login'
+  }
+}
+
 // Interfaces para las respuestas de la API
 interface LoginResponse {
   message: string
@@ -49,12 +63,6 @@ interface UserProfile {
     created_at: string
     updated_at: string
   }
-}
-
-interface ApiError {
-  message: string
-  detail?: string
-  errors?: Record<string, string[]>
 }
 
 // Clase para manejar errores de la API
@@ -109,12 +117,16 @@ export async function apiRequest<T>(
           return apiRequest<T>(endpoint, options, retryCount + 1)
         } catch (refreshError) {
           console.error('[API] Error renovando token:', refreshError)
-          // Si no se puede renovar, limpiar tokens y lanzar error
-          localStorage.removeItem(appConfig.auth.tokenKey)
-          localStorage.removeItem(appConfig.auth.refreshTokenKey)
-          localStorage.removeItem('lotificacion_user')
+          // Si no se puede renovar, redirigir al login
+          redirectToLogin()
           throw new ApiError('Sesión expirada', 401, { originalError: refreshError })
         }
+      }
+      
+      // Si es error 401 y ya intentamos renovar (retryCount > 0), redirigir al login
+      if (response.status === 401 && retryCount > 0) {
+        console.error('[API] Token sigue inválido después de intentar renovar')
+        redirectToLogin()
       }
       
       const errorData = await response.json().catch(() => ({}))
@@ -125,17 +137,76 @@ export async function apiRequest<T>(
       )
     }
 
-    return await response.json()
+    // Manejar respuestas vacías (DELETE, 204 No Content, etc.)
+    // Para DELETE y 204 No Content, no hay body
+    if (response.status === 204 || options.method === 'DELETE') {
+      return undefined as T
+    }
+
+    // Intentar parsear JSON, pero manejar respuestas vacías
+    try {
+      const text = await response.text()
+      
+      // Si no hay texto, retornar undefined
+      if (!text || text.trim() === '') {
+        return undefined as T
+      }
+      
+      // Intentar parsear JSON
+      return JSON.parse(text)
+    } catch (parseError) {
+      // Si falla el parseo pero la respuesta fue exitosa (200-299), 
+      // probablemente es una respuesta vacía válida
+      if (response.status >= 200 && response.status < 300) {
+        return undefined as T
+      }
+      // Si es un error de parseo en una respuesta exitosa, lanzar el error
+      throw parseError
+    }
   } catch (error) {
     if (error instanceof ApiError) {
       throw error
     }
+    
+    // Detectar errores de conexión específicos
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    if (errorMessage.includes('ERR_CONNECTION_REFUSED') || 
+        errorMessage.includes('Failed to fetch') ||
+        errorMessage.includes('NetworkError') ||
+        errorMessage.includes('fetch failed')) {
+      throw new ApiError(
+        'No se puede conectar al servidor. Por favor, verifica que el servidor Django esté corriendo en http://localhost:8000',
+        0,
+        { originalError: error, type: 'CONNECTION_ERROR' }
+      )
+    }
+    
     throw new ApiError(
       'Error de conexión',
       0,
       { originalError: error }
     )
   }
+}
+
+/** Petición que devuelve el cuerpo como texto (p. ej. SVG). Usa el mismo token JWT que apiRequest. */
+export async function apiRequestText(endpoint: string): Promise<string> {
+  const token = await refreshTokenIfNeeded()
+  const url = `${API_BASE_URL}${endpoint}`
+  const headers: HeadersInit = {}
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
+  const response = await fetch(url, { headers })
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}))
+    throw new ApiError(
+      (errorData as any)?.error || (errorData as any)?.detail || `Error ${response.status}`,
+      response.status,
+      errorData
+    )
+  }
+  return response.text()
 }
 
 // Servicios de autenticación
@@ -226,10 +297,8 @@ export async function refreshTokenIfNeeded(): Promise<string | null> {
         return response.access
       } catch (refreshError) {
         console.error('[API] Error renovando token:', refreshError)
-        // Limpiar tokens inválidos
-        localStorage.removeItem(appConfig.auth.tokenKey)
-        localStorage.removeItem(appConfig.auth.refreshTokenKey)
-        localStorage.removeItem('lotificacion_user')
+        // Si no se puede renovar, redirigir al login
+        redirectToLogin()
         return null
       }
     }
@@ -237,10 +306,8 @@ export async function refreshTokenIfNeeded(): Promise<string | null> {
     return token
   } catch (error) {
     console.error('[API] Error verificando token:', error)
-    // Limpiar tokens inválidos
-    localStorage.removeItem(appConfig.auth.tokenKey)
-    localStorage.removeItem(appConfig.auth.refreshTokenKey)
-    localStorage.removeItem('lotificacion_user')
+    // Si hay un error al verificar el token, redirigir al login
+    redirectToLogin()
     return null
   }
 }

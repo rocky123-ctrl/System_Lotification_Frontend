@@ -6,7 +6,7 @@ import { useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { LayoutDashboard, MapPin, CreditCard, FileText, Settings, Menu, X, LogOut, User } from "lucide-react"
+import { LayoutDashboard, MapPin, CreditCard, FileText, Settings, Menu, X, LogOut, User, Users } from "lucide-react"
 import { useAuth } from "@/contexts/auth-context"
 import { SessionStatus } from "@/components/session-status"
 
@@ -19,19 +19,18 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const pathname = usePathname()
   const { user, logout } = useAuth()
 
-  const [configuracion, setConfiguracion] = useState({
+  const [lotificacion, setLotificacion] = useState({
     nombre: "Lotificaciones",
     logo: null,
   })
 
   const navigation = [
     { name: "Dashboard", href: "/", icon: LayoutDashboard },
-    { name: "Lotes Disponibles", href: "/lotes/disponibles", icon: MapPin },
+    { name: "Lotes", href: "/lotes", icon: MapPin },
     { name: "Lotes Financiados", href: "/lotes/financiados", icon: CreditCard },
-    { name: "Lotes Reservados", href: "/lotes/reservados", icon: MapPin },
-    { name: "Lotes Pagados", href: "/lotes/pagados", icon: MapPin },
+    { name: "Vendedores", href: "/vendedores", icon: Users },
     { name: "Reportes", href: "/reportes", icon: FileText },
-    { name: "Configuración", href: "/configuracion", icon: Settings },
+    { name: "Lotificaciones", href: "/configuracion", icon: Settings },
   ]
 
   const handleLogout = async () => {
@@ -46,10 +45,10 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         <div className="fixed left-0 top-0 h-full w-64 bg-sidebar border-r border-sidebar-border">
           <div className="flex h-16 items-center justify-between px-4">
             <div className="flex items-center gap-3">
-              {configuracion.logo && (
-                <img src={configuracion.logo || "/placeholder.svg"} alt="Logo" className="h-8 w-8 object-contain" />
+              {lotificacion.logo && (
+                <img src={lotificacion.logo || "/placeholder.svg"} alt="Logo" className="h-8 w-8 object-contain" />
               )}
-              <h1 className="text-lg font-bold text-sidebar-foreground">{configuracion.nombre}</h1>
+              <h1 className="text-lg font-bold text-sidebar-foreground">{lotificacion.nombre}</h1>
             </div>
             <Button variant="ghost" size="sm" onClick={() => setSidebarOpen(false)}>
               <X className="h-4 w-4" />
@@ -90,10 +89,10 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       <div className="hidden lg:fixed lg:inset-y-0 lg:left-0 lg:z-50 lg:block lg:w-64 lg:bg-sidebar lg:border-r lg:border-sidebar-border">
         <div className="flex h-16 items-center px-6">
           <div className="flex items-center gap-3">
-            {configuracion.logo && (
-              <img src={configuracion.logo || "/placeholder.svg"} alt="Logo" className="h-8 w-8 object-contain" />
+            {lotificacion.logo && (
+              <img src={lotificacion.logo || "/placeholder.svg"} alt="Logo" className="h-8 w-8 object-contain" />
             )}
-            <h1 className="text-xl font-bold text-sidebar-foreground">{configuracion.nombre}</h1>
+            <h1 className="text-xl font-bold text-sidebar-foreground">{lotificacion.nombre}</h1>
           </div>
         </div>
         <nav className="px-4 space-y-2">
