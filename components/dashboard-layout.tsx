@@ -6,7 +6,7 @@ import { useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { LayoutDashboard, MapPin, CreditCard, FileText, Settings, Menu, X, LogOut, User, Users } from "lucide-react"
+import { LayoutDashboard, MapPin, FileText, Settings, Menu, X, LogOut, User, Users, ChevronDown, ChevronRight, UserPlus, Receipt, Wrench } from "lucide-react"
 import { useAuth } from "@/contexts/auth-context"
 import { SessionStatus } from "@/components/session-status"
 
@@ -16,6 +16,9 @@ interface DashboardLayoutProps {
 
 export function DashboardLayout({ children }: DashboardLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [clientesExpanded, setClientesExpanded] = useState(false)
+  const [lotificacionesExpanded, setLotificacionesExpanded] = useState(false)
+  const [financieroExpanded, setFinancieroExpanded] = useState(false)
   const pathname = usePathname()
   const { user, logout } = useAuth()
 
@@ -26,11 +29,22 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
   const navigation = [
     { name: "Dashboard", href: "/", icon: LayoutDashboard },
-    { name: "Lotes", href: "/lotes", icon: MapPin },
-    { name: "Lotes Financiados", href: "/lotes/financiados", icon: CreditCard },
-    { name: "Vendedores", href: "/vendedores", icon: Users },
     { name: "Reportes", href: "/reportes", icon: FileText },
+  ]
+
+  const lotificacionesNavigation = [
+    { name: "Lotes", href: "/lotes", icon: MapPin },
     { name: "Lotificaciones", href: "/configuracion", icon: Settings },
+  ]
+
+  const moduloFinancieroNavigation = [
+    { name: "Empleados", href: "/vendedores", icon: Users },
+  ]
+
+  const clientesNavigation = [
+    { name: "Cuentas por Cobrar (Mensualidad)", href: "/clientes/cuentas-cobrar", icon: Receipt },
+    { name: "Servicios (agua, luz, mantenimiento, otros)", href: "/clientes/servicios", icon: Wrench },
+    { name: "Registrar Cliente", href: "/clientes/registrar", icon: UserPlus },
   ]
 
   const handleLogout = async () => {
@@ -69,6 +83,110 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                 {item.name}
               </Link>
             ))}
+            
+            {/* Sección Lotificaciones y Lotes - Expandible */}
+            <div>
+              <button
+                onClick={() => setLotificacionesExpanded(!lotificacionesExpanded)}
+                className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors w-full text-left text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              >
+                <MapPin className="h-4 w-4" />
+                Lotificaciones y Lotes
+                {lotificacionesExpanded ? (
+                  <ChevronDown className="h-4 w-4 ml-auto" />
+                ) : (
+                  <ChevronRight className="h-4 w-4 ml-auto" />
+                )}
+              </button>
+              
+              {lotificacionesExpanded && (
+                <div className="ml-6 mt-1 space-y-1">
+                  {lotificacionesNavigation.map((item) => (
+                    <Link
+                      key={item.name}
+                      href={item.href}
+                      className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                        pathname === item.href
+                          ? "bg-sidebar-primary text-sidebar-primary-foreground"
+                          : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                      }`}
+                    >
+                      <item.icon className="h-4 w-4" />
+                      {item.name}
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
+            {/* Sección Módulo Financiero - Expandible */}
+            <div>
+              <button
+                onClick={() => setFinancieroExpanded(!financieroExpanded)}
+                className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors w-full text-left text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              >
+                <Users className="h-4 w-4" />
+                Módulo Financiero
+                {financieroExpanded ? (
+                  <ChevronDown className="h-4 w-4 ml-auto" />
+                ) : (
+                  <ChevronRight className="h-4 w-4 ml-auto" />
+                )}
+              </button>
+              
+              {financieroExpanded && (
+                <div className="ml-6 mt-1 space-y-1">
+                  {moduloFinancieroNavigation.map((item) => (
+                    <Link
+                      key={item.name}
+                      href={item.href}
+                      className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                        pathname === item.href
+                          ? "bg-sidebar-primary text-sidebar-primary-foreground"
+                          : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                      }`}
+                    >
+                      <item.icon className="h-4 w-4" />
+                      {item.name}
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
+            
+            {/* Sección Clientes - Expandible */}
+            <div>
+              <button
+                onClick={() => setClientesExpanded(!clientesExpanded)}
+                className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors w-full text-left text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              >
+                <Users className="h-4 w-4" />
+                Clientes
+                {clientesExpanded ? (
+                  <ChevronDown className="h-4 w-4 ml-auto" />
+                ) : (
+                  <ChevronRight className="h-4 w-4 ml-auto" />
+                )}
+              </button>
+              
+              {clientesExpanded && (
+                <div className="ml-6 mt-1 space-y-1">
+                  {clientesNavigation.map((item) => (
+                    <Link
+                      key={item.name}
+                      href={item.href}
+                      className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                        pathname === item.href
+                          ? "bg-sidebar-primary text-sidebar-primary-foreground"
+                          : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                      }`}
+                    >
+                      <item.icon className="h-4 w-4" />
+                      {item.name}
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
           </nav>
           <div className="absolute bottom-4 left-4 right-4">
             <div className="flex items-center gap-2 p-3 bg-sidebar-accent rounded-lg">
@@ -110,6 +228,110 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
               {item.name}
             </Link>
           ))}
+          
+          {/* Sección Lotificaciones y Lotes - Expandible */}
+          <div>
+            <button
+              onClick={() => setLotificacionesExpanded(!lotificacionesExpanded)}
+              className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors w-full text-left text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+            >
+              <MapPin className="h-4 w-4" />
+              Lotificaciones y Lotes
+              {lotificacionesExpanded ? (
+                <ChevronDown className="h-4 w-4 ml-auto" />
+              ) : (
+                <ChevronRight className="h-4 w-4 ml-auto" />
+              )}
+            </button>
+            
+            {lotificacionesExpanded && (
+              <div className="ml-6 mt-1 space-y-1">
+                {lotificacionesNavigation.map((item) => (
+                  <Link
+                    key={item.name}
+                    href={item.href}
+                    className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      pathname === item.href
+                        ? "bg-sidebar-primary text-sidebar-primary-foreground"
+                        : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                    }`}
+                  >
+                    <item.icon className="h-4 w-4" />
+                    {item.name}
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+          {/* Sección Módulo Financiero - Expandible */}
+          <div>
+            <button
+              onClick={() => setFinancieroExpanded(!financieroExpanded)}
+              className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors w-full text-left text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+            >
+              <Users className="h-4 w-4" />
+              Módulo Financiero
+              {financieroExpanded ? (
+                <ChevronDown className="h-4 w-4 ml-auto" />
+              ) : (
+                <ChevronRight className="h-4 w-4 ml-auto" />
+              )}
+            </button>
+            
+            {financieroExpanded && (
+              <div className="ml-6 mt-1 space-y-1">
+                {moduloFinancieroNavigation.map((item) => (
+                  <Link
+                    key={item.name}
+                    href={item.href}
+                    className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      pathname === item.href
+                        ? "bg-sidebar-primary text-sidebar-primary-foreground"
+                        : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                    }`}
+                  >
+                    <item.icon className="h-4 w-4" />
+                    {item.name}
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+          
+          {/* Sección Clientes - Expandible */}
+          <div>
+            <button
+              onClick={() => setClientesExpanded(!clientesExpanded)}
+              className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors w-full text-left text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+            >
+              <Users className="h-4 w-4" />
+              Clientes
+              {clientesExpanded ? (
+                <ChevronDown className="h-4 w-4 ml-auto" />
+              ) : (
+                <ChevronRight className="h-4 w-4 ml-auto" />
+              )}
+            </button>
+            
+            {clientesExpanded && (
+              <div className="ml-6 mt-1 space-y-1">
+                {clientesNavigation.map((item) => (
+                  <Link
+                    key={item.name}
+                    href={item.href}
+                    className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      pathname === item.href
+                        ? "bg-sidebar-primary text-sidebar-primary-foreground"
+                        : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                    }`}
+                  >
+                    <item.icon className="h-4 w-4" />
+                    {item.name}
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
         </nav>
         <div className="absolute bottom-4 left-4 right-4">
           <div className="flex items-center gap-3 p-3 bg-sidebar-accent rounded-lg">
@@ -135,7 +357,11 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
           <div className="flex flex-1 gap-x-4 self-stretch lg:gap-x-6">
             <div className="flex flex-1 items-center">
               <h2 className="text-lg font-semibold text-foreground">
-                {navigation.find((item) => item.href === pathname)?.name || "Dashboard Administrativo"}
+                {navigation.find((item) => item.href === pathname)?.name || 
+                 lotificacionesNavigation.find((item) => item.href === pathname)?.name ||
+                 moduloFinancieroNavigation.find((item) => item.href === pathname)?.name ||
+                 clientesNavigation.find((item) => item.href === pathname)?.name || 
+                 "Dashboard Administrativo"}
               </h2>
             </div>
             <div className="flex items-center gap-4">

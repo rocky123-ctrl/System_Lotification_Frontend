@@ -34,7 +34,7 @@ export const usersService = {
     return []
   },
 
-  /** Listar solo usuarios con rol Vendedor (para el apartado Vendedores). */
+  /** Listar solo usuarios con rol Vendedor (para el módulo Financiero — empleados). */
   async getVendedores(search?: string): Promise<UserListItem[]> {
     return this.getUsers({ role: 'Vendedor', search: search || undefined })
   },

@@ -8,25 +8,44 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { TablePagination } from "@/components/ui/table-pagination"
-import { Search, Filter, Download, Loader2 } from "lucide-react"
+import { Search, Filter, Download, Loader2, Edit, Trash2 } from "lucide-react"
 import { usePagination } from "@/hooks/use-pagination"
-import { usersService, type UserListItem } from "@/lib/users-service"
+import { empleadosService, type Empleado } from "@/lib/empleados-service"
+import { RegistroEmpleadoModal } from "@/components/registro-empleado-modal"
+import { EditarEmpleadoModal } from "@/components/editar-empleado-modal"
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 
-export function Vendedores() {
+export function Empleados() {
   const [searchTerm, setSearchTerm] = useState("")
   const [filterEstado, setFilterEstado] = useState<"all" | "activo" | "inactivo">("all")
-  const [vendedores, setVendedores] = useState<UserListItem[]>([])
+  const [empleados, setEmpleados] = useState<Empleado[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
+  // UI states for create/edit/delete
+  // UI states for editing/deleting employees
+  const [showEdit, setShowEdit] = useState(false)
+  const [showDelete, setShowDelete] = useState(false)
+  const [selectedEmpleado, setSelectedEmpleado] = useState<Empleado | null>(null)
+
+  const handleEditClick = (u: Empleado) => {
+    setSelectedEmpleado(u)
+    setShowEdit(true)
+  }
+
+  const handleDeleteClick = (u: Empleado) => {
+    setSelectedEmpleado(u)
+    setShowDelete(true)
+  }
+
+  const loadEmpleados = () => {
     let cancelled = false
     setLoading(true)
     setError(null)
-    usersService
-      .getVendedores()
+    empleadosService
+      .getEmpleados()
       .then((data) => {
-        if (!cancelled) setVendedores(data)
+        if (!cancelled) setEmpleados(data)
       })
       .catch((err: unknown) => {
         if (!cancelled) {
@@ -39,19 +58,24 @@ export function Vendedores() {
     return () => {
       cancelled = true
     }
+  }
+
+  useEffect(() => {
+    const cleanup = loadEmpleados()
+    return cleanup
   }, [])
 
-  // Filtrar vendedores (client-side)
-  const filteredVendedores = vendedores.filter((u) => {
+  // Filtrar empleados (client-side)
+  const filteredEmpleados = empleados.filter((u) => {
     const term = searchTerm.toLowerCase()
     const matchesSearch =
       !term ||
-      (u.first_name || "").toLowerCase().includes(term) ||
-      (u.last_name || "").toLowerCase().includes(term) ||
-      (u.email || "").toLowerCase().includes(term) ||
-      (u.phone || "").toLowerCase().includes(term) ||
-      (u.username || "").toLowerCase().includes(term)
-    const estado = u.is_active ? "activo" : "inactivo"
+      (u.nombre || "").toLowerCase().includes(term) ||
+      (u.apellido || "").toLowerCase().includes(term) ||
+      (u.correo || "").toLowerCase().includes(term) ||
+      (u.telefono || "").toLowerCase().includes(term) ||
+      (u.dpi || "").toLowerCase().includes(term)
+    const estado = u.estado ? "activo" : "inactivo"
     const matchesEstado = filterEstado === "all" || estado === filterEstado
     return matchesSearch && matchesEstado
   })
@@ -67,7 +91,7 @@ export function Vendedores() {
     goToPage,
     setItemsPerPage,
   } = usePagination({
-    data: filteredVendedores,
+    data: filteredEmpleados,
     itemsPerPage: 10,
   })
 
@@ -85,7 +109,7 @@ export function Vendedores() {
       <div className="flex items-center justify-center min-h-[320px]">
         <div className="flex flex-col items-center gap-2 text-muted-foreground">
           <Loader2 className="h-8 w-8 animate-spin" />
-          <span>Cargando vendedores...</span>
+          <span>Cargando empleados...</span>
         </div>
       </div>
     )
@@ -94,12 +118,12 @@ export function Vendedores() {
   if (error) {
     return (
       <div className="space-y-4">
-        <h1 className="text-3xl font-bold tracking-tight">Vendedores</h1>
+        <h1 className="text-3xl font-bold tracking-tight">Empleados</h1>
         <Card className="border-destructive">
           <CardContent className="py-6">
             <p className="text-destructive">{error}</p>
             <p className="text-sm text-muted-foreground mt-2">
-              Los vendedores son usuarios con rol &quot;Vendedor&quot;. Asígnelo desde el módulo de usuarios/permisos.
+              Los empleados son usuarios con rol &quot;Vendedor&quot;. Asígnelo desde el módulo de usuarios/permisos.
             </p>
           </CardContent>
         </Card>
@@ -112,18 +136,22 @@ export function Vendedores() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Vendedores</h1>
+          <h1 className="text-3xl font-bold tracking-tight">Empleados</h1>
           <p className="text-muted-foreground">
-            Usuarios con rol &quot;Vendedor&quot; (gestionados en Usuarios / Permisos)
+            Gestión interna de empleados de la empresa
           </p>
+        </div>
+        <div>
+          {/* the modal component includes its own trigger button */}
+          <RegistroEmpleadoModal onCreated={loadEmpleados} />
         </div>
       </div>
 
       {/* Filtros y búsqueda */}
       <Card>
         <CardHeader>
-          <CardTitle>Lista de Vendedores</CardTitle>
-          <CardDescription>Busca y filtra los vendedores registrados</CardDescription>
+          <CardTitle>Lista de Empleados</CardTitle>
+          <CardDescription>Busca y filtra los empleados registrados</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex flex-col sm:flex-row gap-4 mb-6">
@@ -139,7 +167,7 @@ export function Vendedores() {
               </div>
             </div>
             <div className="w-full sm:w-48">
-              <Select value={filterEstado} onValueChange={setFilterEstado}>
+              <Select value={filterEstado} onValueChange={(v) => setFilterEstado(v as "all" | "activo" | "inactivo")}>
                 <SelectTrigger>
                   <Filter className="mr-2 h-4 w-4" />
                   <SelectValue placeholder="Filtrar por estado" />
@@ -162,20 +190,21 @@ export function Vendedores() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Nombre</TableHead>
-                  <TableHead>Usuario</TableHead>
+                  <TableHead>Nombre y Apellido</TableHead>
+                  <TableHead>DPI / Rol</TableHead>
                   <TableHead>Contacto</TableHead>
                   <TableHead>Dirección</TableHead>
                   <TableHead>Estado</TableHead>
-                  <TableHead>Fecha de alta</TableHead>
+                  <TableHead>Contratación</TableHead>
+                  <TableHead className="w-24 text-right">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {paginatedVendedores.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                      {vendedores.length === 0
-                        ? "No hay usuarios con rol Vendedor. Asígnalo desde Permisos / Usuarios."
+                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                      {empleados.length === 0
+                        ? "No hay empleados registrados."
                         : "No hay resultados con los filtros aplicados"}
                     </TableCell>
                   </TableRow>
@@ -183,22 +212,45 @@ export function Vendedores() {
                   paginatedVendedores.map((u) => (
                     <TableRow key={u.id}>
                       <TableCell className="font-medium">
-                        {u.full_name || [u.first_name, u.last_name].filter(Boolean).join(" ") || u.username}
+                        {u.nombre} {u.apellido || ""}
                       </TableCell>
-                      <TableCell className="text-muted-foreground">{u.username}</TableCell>
+                      <TableCell className="text-muted-foreground">
+                        <div>{u.dpi || "—"}</div>
+                        <div className="text-xs">{u.rol}</div>
+                      </TableCell>
                       <TableCell>
                         <div className="space-y-1 text-sm">
-                          <div>{u.email || "—"}</div>
-                          <div className="text-muted-foreground">{u.phone || "—"}</div>
+                          <div>{u.correo || "—"}</div>
+                          <div className="text-muted-foreground">{u.telefono || "—"}</div>
                         </div>
                       </TableCell>
-                      <TableCell className="max-w-[200px] truncate text-sm">{u.address || "—"}</TableCell>
+                      <TableCell className="max-w-[200px] truncate text-sm">{u.direccion || "—"}</TableCell>
                       <TableCell>
-                        <Badge variant={u.is_active ? "default" : "secondary"}>
-                          {u.is_active ? "Activo" : "Inactivo"}
+                        <Badge variant={u.estado ? "default" : "secondary"}>
+                          {u.estado ? "Activo" : "Inactivo"}
                         </Badge>
                       </TableCell>
-                      <TableCell>{formatDate(u.date_joined)}</TableCell>
+                      <TableCell>{formatDate(u.fecha_contratacion)}</TableCell>
+                      <TableCell className="text-right">
+                        <div className="inline-flex space-x-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleEditClick(u)}
+                            aria-label="Editar empleado"
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDeleteClick(u)}
+                            aria-label="Eliminar empleado"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
                     </TableRow>
                   ))
                 )}
@@ -220,6 +272,52 @@ export function Vendedores() {
           )}
         </CardContent>
       </Card>
+
+      {/* Edit modal and delete confirmation dialog outside of table/container */}
+      <EditarEmpleadoModal
+        empleado={selectedEmpleado}
+        isOpen={showEdit}
+        onClose={() => {
+          setShowEdit(false)
+          setSelectedEmpleado(null)
+        }}
+        onUpdated={() => {
+          loadEmpleados()
+        }}
+      />
+
+      <AlertDialog open={showDelete} onOpenChange={setShowDelete}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Eliminar empleado</AlertDialogTitle>
+            <AlertDialogDescription>
+              ¿Estás seguro de que quieres eliminar al empleado{' '}
+              <strong>{selectedEmpleado?.nombre} {selectedEmpleado?.apellido}</strong>?
+              Esta acción no podrá deshacerse.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-white"
+              onClick={async () => {
+                if (selectedEmpleado) {
+                  try {
+                    await empleadosService.eliminarEmpleado(selectedEmpleado.id)
+                    loadEmpleados()
+                  } catch (e) {
+                    console.error("Error eliminando empleado", e)
+                  }
+                }
+                setShowDelete(false)
+                setSelectedEmpleado(null)
+              }}
+            >
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

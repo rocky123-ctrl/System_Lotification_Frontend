@@ -12,8 +12,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Loader2, AlertCircle, ZoomIn, ZoomOut, RotateCcw, Pencil, ShoppingCart } from "lucide-react"
-import { lotificacionService, type LotePlanoItem, type LoteDetallePlano } from "@/lib/lotificacion-service"
+import { Loader2, AlertCircle, ZoomIn, ZoomOut, RotateCcw, Pencil, ShoppingCart, Unlink } from "lucide-react"
+import {
+  lotificacionService,
+  type LotePlanoItem,
+  type LoteDetallePlano,
+  type LoteSinIdentificadorItem,
+} from "@/lib/lotificacion-service"
 import { lotesService } from "@/lib/lotes-service"
 import { cn } from "@/lib/utils"
 
@@ -41,6 +46,19 @@ const ESTADO_LABEL: Record<string, string> = {
 }
 
 const DEFAULT_FILL = "#94a3b8"
+
+/** Parsea el identificador del plano (ej. "A-02" o "MZ03-L07") a manzana y número de lote. */
+function parseIdentificadorPlano(
+  identificador: string | null
+): { manzanaNombre: string; numeroLote: string } | null {
+  if (!identificador?.trim()) return null
+  const id = identificador.trim()
+  const mzMatch = /^MZ(.+)-L(.+)$/i.exec(id)
+  if (mzMatch) return { manzanaNombre: mzMatch[1].trim(), numeroLote: mzMatch[2].trim() }
+  const simpleMatch = /^(.+)-(.+)$/.exec(id)
+  if (simpleMatch) return { manzanaNombre: simpleMatch[1].trim(), numeroLote: simpleMatch[2].trim() }
+  return null
+}
 
 interface PlanoInteractivoProps {
   lotificacionId: number
@@ -75,6 +93,14 @@ export function PlanoInteractivo({ lotificacionId, className }: PlanoInteractivo
     costo_instalacion: "",
     estado: "disponible",
   })
+  const [relateModalOpen, setRelateModalOpen] = useState(false)
+  const [relateLoading, setRelateLoading] = useState(false)
+  const [relateSubmitting, setRelateSubmitting] = useState(false)
+  const [relateError, setRelateError] = useState<string | null>(null)
+  const [relateOptions, setRelateOptions] = useState<LoteSinIdentificadorItem[]>([])
+  const [relateSelectedId, setRelateSelectedId] = useState<string>("")
+  const [relateFilterManzana, setRelateFilterManzana] = useState<string>("__all__")
+  const [desvincularLoading, setDesvincularLoading] = useState(false)
   const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 })
   const [isPanning, setIsPanning] = useState(false)
   const [panStart, setPanStart] = useState({ x: 0, y: 0 })
@@ -374,12 +400,40 @@ export function PlanoInteractivo({ lotificacionId, className }: PlanoInteractivo
                     type="button"
                     size="sm"
                     onClick={() => {
-                      // Navegar a venta o abrir flujo de venta (placeholder)
                       window.location.href = `/lotes?lotificacion=${lotificacionId}&vender=${modalLote.id}` 
                     }}
                   >
                     <ShoppingCart className="h-4 w-4 mr-1" />
                     Vender este lote
+                  </Button>
+                )}
+                {modalLote.identificador && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={desvincularLoading}
+                    onClick={async () => {
+                      if (!modalLote?.id) return
+                      setDesvincularLoading(true)
+                      try {
+                        await lotificacionService.desvincularLote(lotificacionId, modalLote.id)
+                        const list = await lotificacionService.getLotesPlano(lotificacionId)
+                        setLotesList(list)
+                        setModalLote(null)
+                      } catch (err: any) {
+                        setEditError(err?.data?.error ?? err?.message ?? "Error al desvincular.")
+                      } finally {
+                        setDesvincularLoading(false)
+                      }
+                    }}
+                  >
+                    {desvincularLoading ? (
+                      <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                    ) : (
+                      <Unlink className="h-4 w-4 mr-1" />
+                    )}
+                    Desvincular del plano
                   </Button>
                 )}
               </div>
@@ -389,6 +443,7 @@ export function PlanoInteractivo({ lotificacionId, className }: PlanoInteractivo
               <p className="text-muted-foreground">
                 No hay información almacenada en la base de datos para este lote en el plano.
               </p>
+            <div className="flex flex-wrap gap-2">
               <Button
                 type="button"
                 onClick={() => {
@@ -404,6 +459,33 @@ export function PlanoInteractivo({ lotificacionId, className }: PlanoInteractivo
               >
                 Registrar este lote nuevo
               </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={async () => {
+                  if (!modalIdentificador) return
+                  setRelateError(null)
+                  setRelateSelectedId("")
+                  setRelateModalOpen(true)
+                  setRelateLoading(true)
+                  try {
+                    const list = await lotificacionService.getLotesSinIdentificador(lotificacionId)
+                    setRelateOptions(list)
+                    setRelateSelectedId("")
+                  } catch (err: any) {
+                    setRelateError(
+                      err?.data?.error ??
+                        err?.message ??
+                        "Error al cargar los lotes disponibles para relacionar."
+                    )
+                  } finally {
+                    setRelateLoading(false)
+                  }
+                }}
+              >
+                Relacionar con algún lote creado
+              </Button>
+            </div>
             </div>
           ) : (
             <p className="text-muted-foreground py-4">No se pudo cargar la información del lote.</p>
@@ -451,7 +533,9 @@ export function PlanoInteractivo({ lotificacionId, className }: PlanoInteractivo
                 const list = await lotificacionService.getLotesPlano(lotificacionId)
                 setLotesList(list)
                 setModalLote(created)
-                setRegisterModalOpen(false)
+                // Evitar advertencia aria-hidden: quitar foco y cerrar en el siguiente frame
+                ;(document.activeElement as HTMLElement)?.blur()
+                requestAnimationFrame(() => setRegisterModalOpen(false))
               } catch (err: any) {
                 setRegisterError(err?.data?.error ?? err?.message ?? "Error al registrar el lote.")
               } finally {
@@ -549,6 +633,135 @@ export function PlanoInteractivo({ lotificacionId, className }: PlanoInteractivo
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={relateModalOpen}
+        onOpenChange={(open) => {
+          setRelateModalOpen(open)
+          if (!open) {
+            setRelateError(null)
+            setRelateSelectedId("")
+            setRelateFilterManzana("")
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Relacionar con lote existente</DialogTitle>
+            <DialogDescription>
+              Solo se puede vincular con un lote que tenga la misma manzana y el mismo número que
+              este lote del plano ({modalIdentificador ?? "—"}). Seleccione uno de los que coinciden.
+            </DialogDescription>
+          </DialogHeader>
+          {relateLoading ? (
+            <div className="flex justify-center py-6">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : relateOptions.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-4">
+              No hay lotes disponibles para relacionar en esta lotificación. Cree primero lotes
+              manualmente desde el apartado de &quot;Lotes&quot;.
+            </p>
+          ) : (() => {
+            const parsed = parseIdentificadorPlano(modalIdentificador)
+            const relateOptionsMatch = parsed
+              ? relateOptions.filter(
+                  (l) =>
+                    (l.manzana_nombre ?? "").trim() === parsed.manzanaNombre &&
+                    String(l.numero_lote ?? "").trim() === parsed.numeroLote
+                )
+              : []
+            if (relateOptionsMatch.length === 0) {
+              return (
+                <p className="text-sm text-destructive py-4">
+                  No se puede vincular: no hay ningún lote sin asignar con la misma manzana y
+                  número que este lote del plano ({modalIdentificador ?? "—"}). Solo se permite
+                  vincular cuando la información coincide.
+                </p>
+              )
+            }
+            return (
+            <form
+              className="space-y-4"
+              onSubmit={async (e) => {
+                e.preventDefault()
+                if (!modalIdentificador || !relateSelectedId) {
+                  setRelateError("Seleccione un lote para relacionar.")
+                  return
+                }
+                setRelateError(null)
+                setRelateSubmitting(true)
+                try {
+                  const updated = await lotificacionService.relacionarLoteExistente(
+                    lotificacionId,
+                    {
+                      lote_id: parseInt(relateSelectedId, 10),
+                      identificador: modalIdentificador,
+                    }
+                  )
+                  const list = await lotificacionService.getLotesPlano(lotificacionId)
+                  setLotesList(list)
+                  setModalLote(updated)
+                  setRelateModalOpen(false)
+                } catch (err: any) {
+                  setRelateError(
+                    err?.data?.error ?? err?.message ?? "Error al relacionar el lote seleccionado."
+                  )
+                } finally {
+                  setRelateSubmitting(false)
+                }
+              }}
+            >
+              <div className="space-y-2">
+                <Label>Lote creado sin relacionar (misma manzana y número)</Label>
+                <Select
+                  value={relateSelectedId}
+                  onValueChange={(v) => setRelateSelectedId(v)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccione un lote" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {relateOptionsMatch.map((lote) => (
+                      <SelectItem key={lote.id} value={String(lote.id)}>
+                        {`${lote.manzana_nombre ?? `Manzana ${lote.manzana}`} - Lote ${
+                          lote.numero_lote
+                        } (Q ${parseFloat(lote.valor_total).toLocaleString("es-GT", {
+                          minimumFractionDigits: 2,
+                        })})`}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {relateError && (
+                <p className="text-sm text-destructive">{relateError}</p>
+              )}
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setRelateModalOpen(false)}
+                  disabled={relateSubmitting}
+                >
+                  Cancelar
+                </Button>
+                <Button type="submit" disabled={relateSubmitting}>
+                  {relateSubmitting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Relacionando…
+                    </>
+                  ) : (
+                    "Relacionar lote"
+                  )}
+                </Button>
+              </DialogFooter>
+            </form>
+            )
+          })()}
         </DialogContent>
       </Dialog>
 

@@ -232,16 +232,26 @@ export function SVGUploader({
                     className="max-w-full max-h-80 object-contain"
                     onError={(e) => {
                       // Si falla la carga de imagen, intentar como SVG inline
-                      fetch(preview)
-                        .then(res => res.text())
-                        .then(svgText => {
+                      const loadSVG = async () => {
+                        try {
+                          let svgText: string
+                          // Si es una URL del servidor API, usar apiRequestText con autenticación
+                          if (preview.includes('/api/') || preview.startsWith('/')) {
+                            const { apiRequestText } = await import('@/lib/api')
+                            svgText = await apiRequestText(preview.replace(/^.*\/api/, ''))
+                          } else {
+                            // Para URLs externas, usar fetch directo
+                            const res = await fetch(preview)
+                            svgText = await res.text()
+                          }
                           if (svgText.includes('<svg')) {
                             setPreview(svgText)
                           }
-                        })
-                        .catch(() => {
-                          console.error('Error cargando SVG')
-                        })
+                        } catch (error) {
+                          console.error('Error cargando SVG:', error)
+                        }
+                      }
+                      loadSVG()
                     }}
                   />
                 ) : (
@@ -296,6 +306,8 @@ export function SVGUploader({
               onChange={handleFileSelect}
               className="hidden"
               disabled={disabled || isSubmitting || isUploading || isDeleting}
+              title="Seleccionar archivo SVG del plano de la lotificación"
+              aria-label="Seleccionar archivo SVG del plano de la lotificación"
             />
             <Label htmlFor="svg-upload" className="flex-1">
               <Button

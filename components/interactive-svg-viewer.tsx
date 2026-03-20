@@ -114,9 +114,17 @@ export function InteractiveSVGViewer({
         processSVG(svgContent)
       } else if (svgUrl) {
         try {
-          const response = await fetch(svgUrl)
-          const content = await response.text()
-          processSVG(content)
+          // Si es una URL del servidor API, usar apiRequestText con autenticación
+          if (svgUrl.includes('/api/') || svgUrl.startsWith('/')) {
+            const { apiRequestText } = await import('@/lib/api')
+            const content = await apiRequestText(svgUrl.replace(/^.*\/api/, ''))
+            processSVG(content)
+          } else {
+            // Para URLs externas, usar fetch directo
+            const response = await fetch(svgUrl)
+            const content = await response.text()
+            processSVG(content)
+          }
         } catch (error) {
           console.error("Error cargando SVG:", error)
         }

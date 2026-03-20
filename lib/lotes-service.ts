@@ -30,6 +30,8 @@ export interface LoteCreate {
 
 export interface LoteUpdate {
   version: number
+  manzana?: number
+  numero_lote?: string
   metros_cuadrados?: string
   valor_total?: string
   costo_instalacion?: string

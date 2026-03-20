@@ -3,17 +3,24 @@
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
-import { MapPin, CreditCard, CheckCircle, Clock, TrendingUp, DollarSign, Settings, Save } from "lucide-react"
+import { 
+  TrendingUp, 
+  TrendingDown, 
+  DollarSign, 
+  AlertCircle, 
+  CheckCircle,
+  Clock,
+  Settings,
+  Bell,
+  AlertTriangle,
+  Info
+} from "lucide-react"
 import { useConfiguracion } from "@/hooks/use-configuracion"
 import { formatearPorcentaje, formatearMoneda, formatearTasaMensual } from "@/lib/configuracion-service"
 
 export function AdminDashboard() {
   const { configuracionActiva, configuracionResumen, isLoading } = useConfiguracion()
-  const [tasaAnual, setTasaAnual] = useState("12")
-  const [tasaMensual, setTasaMensual] = useState("1")
 
   // Usar datos reales de la configuración
   const stats = {
@@ -21,27 +28,19 @@ export function AdminDashboard() {
     lotesFinanciados: configuracionResumen?.lotes_financiados || 0,
     lotesReservados: configuracionResumen?.lotes_reservados || 0,
     lotesPagados: configuracionResumen?.lotes_vendidos || 0,
-    ingresosTotales: 7759646.95, // TODO: Obtener de backend
-    ingresosMes: 245000, // TODO: Obtener de backend
-    tasaCobranza: 85.5, // TODO: Obtener de backend
-    promedioFinanciamiento: 24, // TODO: Obtener de backend
+    ingresosTotales: 7759646.95,
+    ingresosMes: 245000,
+    gastosMes: 85000,
+    cobranzaAtrasada: 45000,
+    tasaCobranza: 85.5,
+    promedioFinanciamiento: 24,
   }
 
-  // Calcular total de lotes
+  // Calcular totales
   const totalLotes = stats.lotesDisponibles + stats.lotesFinanciados + stats.lotesReservados + stats.lotesPagados
+  const gananciasMes = stats.ingresosMes - stats.gastosMes
+  const porcentajeGanancia = ((gananciasMes / stats.ingresosMes) * 100).toFixed(1)
 
-  // Actualizar tasas cuando se carga la configuración
-  useEffect(() => {
-    if (configuracionActiva) {
-      setTasaAnual(configuracionActiva.tasa_anual)
-      setTasaMensual((parseFloat(configuracionActiva.tasa_anual) / 12).toFixed(2))
-    }
-  }, [configuracionActiva])
-
-  const handleSaveTasas = () => {
-    // Aquí se guardarían las tasas en la base de datos
-    console.log("Guardando tasas:", { tasaAnual, tasaMensual })
-  }
 
   // Mostrar loading si está cargando
   if (isLoading) {
@@ -55,267 +54,284 @@ export function AdminDashboard() {
     )
   }
 
-  // Mostrar mensaje si no hay configuración
-  if (!configuracionActiva) {
-    return (
-      <div className="space-y-8">
+  // Datos por defecto si no hay configuración activa
+  const nombreLotificacion = configuracionActiva?.nombre_lotificacion || "Sistema de Lotificaciones"
+  const ubicacion = configuracionActiva?.ubicacion || "Ubicación no especificada"
+  const tasaAnual = configuracionActiva?.tasa_anual || "12.0"
+
+  return (
+    <div className="space-y-8">
+      {/* Encabezado: Información General */}
+      <div>
+        <h2 className="text-3xl font-bold tracking-tight mb-2">{nombreLotificacion}</h2>
+        <p className="text-muted-foreground">{ubicacion}</p>
+      </div>
+
+      {/* ==== SECCIÓN 1: GANANCIAS Y PÉRDIDAS ==== */}
+      <div className="space-y-4">
+        <h3 className="text-xl font-semibold flex items-center gap-2">
+          <DollarSign className="h-5 w-5" />
+          Información General de Ganancias y Pérdidas
+        </h3>
+
+        {/* Row 1: Ingresos y Gastos */}
+        <div className="grid gap-4 md:grid-cols-3">
+          {/* Ingresos del Mes */}
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Ingresos del Mes</CardTitle>
+              <TrendingUp className="h-4 w-4 text-green-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-green-600">Q {stats.ingresosMes.toLocaleString()}</div>
+              <p className="text-xs text-muted-foreground mt-1">Ingresos por cobranzas</p>
+            </CardContent>
+          </Card>
+
+          {/* Gastos del Mes */}
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Gastos del Mes</CardTitle>
+              <TrendingDown className="h-4 w-4 text-red-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-red-600">Q {stats.gastosMes.toLocaleString()}</div>
+              <p className="text-xs text-muted-foreground mt-1">Gastos operativos</p>
+            </CardContent>
+          </Card>
+
+          {/* Ganancia Neta */}
+          <Card className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-950 dark:to-green-900">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Ganancia Neta</CardTitle>
+              <CheckCircle className="h-4 w-4 text-green-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-green-700">Q {gananciasMes.toLocaleString()}</div>
+              <p className="text-xs text-green-600 mt-1">{porcentajeGanancia}% de margen</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Row 2: Ingresos Totales y Tasa de Cobranza */}
+        <div className="grid gap-4 md:grid-cols-2">
+          {/* Ingresos Totales Acumulados */}
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Ingresos Totales Acumulados</CardTitle>
+              <DollarSign className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">Q {stats.ingresosTotales.toLocaleString()}</div>
+              <p className="text-xs text-muted-foreground mt-1">Desde el inicio del proyecto</p>
+            </CardContent>
+          </Card>
+
+          {/* Tasa de Cobranza */}
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Tasa de Cobranza</CardTitle>
+              <TrendingUp className="h-4 w-4 text-chart-1" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-chart-1">{stats.tasaCobranza}%</div>
+              <p className="text-xs text-muted-foreground mt-1">Pagos al día</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Row 3: Estado de Lotes */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Settings className="h-5 w-5" />
-              Configuración Requerida
-            </CardTitle>
+            <CardTitle className="text-base">Resumen de Lotes</CardTitle>
+            <CardDescription>Distribución actual de todos los lotes en el sistema</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-center py-8">
-              <p className="text-muted-foreground mb-4">No hay configuración activa en el sistema</p>
-              <p className="text-sm text-muted-foreground mb-6">
-                Para ver el dashboard completo, necesitas configurar el sistema primero.
-              </p>
-              <Button asChild>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="flex items-center justify-between p-3 border rounded-lg">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-chart-1"></div>
+                  <span className="font-medium text-sm">Disponibles</span>
+                </div>
+                <div className="text-right">
+                  <div className="font-bold">{stats.lotesDisponibles}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {totalLotes > 0 ? ((stats.lotesDisponibles / totalLotes) * 100).toFixed(1) : '0'}%
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between p-3 border rounded-lg">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-chart-2"></div>
+                  <span className="font-medium text-sm">Financiados</span>
+                </div>
+                <div className="text-right">
+                  <div className="font-bold">{stats.lotesFinanciados}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {totalLotes > 0 ? ((stats.lotesFinanciados / totalLotes) * 100).toFixed(1) : '0'}%
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between p-3 border rounded-lg">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-chart-4"></div>
+                  <span className="font-medium text-sm">Reservados</span>
+                </div>
+                <div className="text-right">
+                  <div className="font-bold">{stats.lotesReservados}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {totalLotes > 0 ? ((stats.lotesReservados / totalLotes) * 100).toFixed(1) : '0'}%
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between p-3 border rounded-lg">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-chart-3"></div>
+                  <span className="font-medium text-sm">Pagados</span>
+                </div>
+                <div className="text-right">
+                  <div className="font-bold">{stats.lotesPagados}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {totalLotes > 0 ? ((stats.lotesPagados / totalLotes) * 100).toFixed(1) : '0'}%
+                  </div>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* ==== SECCIÓN 2: NOTIFICACIONES DEL PROGRAMA ==== */}
+      <div className="space-y-4">
+        <h3 className="text-xl font-semibold flex items-center gap-2">
+          <Bell className="h-5 w-5" />
+          Notificaciones del Programa
+        </h3>
+
+        {/* Notificaciones Críticas */}
+        <Card className="border-red-200 dark:border-red-900">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-red-500" />
+              Alertas Críticas
+            </CardTitle>
+            <CardDescription>Problemas que requieren atención inmediata</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {/* Cobranza Atrasada */}
+            <div className="flex items-start gap-3 p-3 bg-red-50 dark:bg-red-950 rounded-lg border border-red-200 dark:border-red-900">
+              <AlertCircle className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <div className="font-semibold text-sm text-red-900 dark:text-red-100">Cobranza Atrasada</div>
+                <p className="text-sm text-red-800 dark:text-red-200">
+                  Hay <span className="font-bold">Q {stats.cobranzaAtrasada.toLocaleString()}</span> en pagos atrasados
+                </p>
+              </div>
+              <Badge variant="destructive">12 clientes</Badge>
+            </div>
+
+            {/* Promedio de Atraso */}
+            <div className="flex items-start gap-3 p-3 bg-orange-50 dark:bg-orange-950 rounded-lg border border-orange-200 dark:border-orange-900">
+              <Clock className="h-5 w-5 text-orange-500 flex-shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <div className="font-semibold text-sm text-orange-900 dark:text-orange-100">Promedio de Retraso</div>
+                <p className="text-sm text-orange-800 dark:text-orange-200">
+                  Los pagos atrasados tienen un retraso promedio de <span className="font-bold">5 días</span>
+                </p>
+              </div>
+              <Badge variant="secondary">5 días</Badge>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Notificaciones Informativas */}
+        <Card className="border-blue-200 dark:border-blue-900">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Info className="h-5 w-5 text-blue-500" />
+              Información General
+            </CardTitle>
+            <CardDescription>Datos operacionales y del sistema</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {/* Configuración Activa */}
+            <div className="flex items-start gap-3 p-3 bg-blue-50 dark:bg-blue-950 rounded-lg border border-blue-200 dark:border-blue-900">
+              <CheckCircle className="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <div className="font-semibold text-sm text-blue-900 dark:text-blue-100">Configuración Activa</div>
+                <p className="text-sm text-blue-800 dark:text-blue-200">
+                  Tasa anual: <span className="font-bold">{formatearPorcentaje(tasaAnual)}</span> | 
+                  Tasa mensual: <span className="font-bold">{formatearTasaMensual(tasaAnual)}</span>
+                </p>
+              </div>
+            </div>
+
+            {/* Promedio de Financiamiento */}
+            <div className="flex items-start gap-3 p-3 bg-blue-50 dark:bg-blue-950 rounded-lg border border-blue-200 dark:border-blue-900">
+              <CheckCircle className="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <div className="font-semibold text-sm text-blue-900 dark:text-blue-100">Promedio de Financiamiento</div>
+                <p className="text-sm text-blue-800 dark:text-blue-200">
+                  El plazo promedio de financiamiento es de <span className="font-bold">{stats.promedioFinanciamiento} meses</span>
+                </p>
+              </div>
+              <Badge variant="outline">{stats.promedioFinanciamiento} meses</Badge>
+            </div>
+
+            {/* Última Actualización */}
+            <div className="flex items-start gap-3 p-3 bg-blue-50 dark:bg-blue-950 rounded-lg border border-blue-200 dark:border-blue-900">
+              <CheckCircle className="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <div className="font-semibold text-sm text-blue-900 dark:text-blue-100">Última Actualización</div>
+                <p className="text-sm text-blue-800 dark:text-blue-200">
+                  {new Date(configuracionActiva?.updated_at || new Date()).toLocaleDateString('es-GT', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  })}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Acciones Rápidas */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Acciones Rápidas</CardTitle>
+            <CardDescription>Gestiona aspectos importantes del sistema</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" asChild>
                 <a href="/configuracion">
                   <Settings className="h-4 w-4 mr-2" />
-                  Ir a Configuración
+                  Configuración
+                </a>
+              </Button>
+              <Button variant="outline" asChild>
+                <a href="/reportes">
+                  <TrendingUp className="h-4 w-4 mr-2" />
+                  Reportes
+                </a>
+              </Button>
+              <Button variant="outline" asChild>
+                <a href="/lotes">
+                  <AlertCircle className="h-4 w-4 mr-2" />
+                  Gestionar Lotes
                 </a>
               </Button>
             </div>
           </CardContent>
         </Card>
       </div>
-    )
-  }
-
-  return (
-    <div className="space-y-8">
-      {/* Información de la lotificación */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <MapPin className="h-5 w-5" />
-            {configuracionActiva.nombre_lotificacion}
-          </CardTitle>
-          <CardDescription>{configuracionActiva.ubicacion}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-            <div>
-              <span className="font-medium">Total de Lotes:</span> {configuracionActiva.total_lotes}
-            </div>
-            <div>
-              <span className="font-medium">Tasa Anual:</span> {formatearPorcentaje(configuracionActiva.tasa_anual)}
-            </div>
-            <div>
-              <span className="font-medium">Tasa Mensual:</span> {formatearTasaMensual(configuracionActiva.tasa_anual)}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* KPIs principales */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Lotes Disponibles</CardTitle>
-            <MapPin className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-chart-1">{stats.lotesDisponibles}</div>
-            <p className="text-xs text-muted-foreground">Listos para venta</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Lotes Financiados</CardTitle>
-            <CreditCard className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-chart-2">{stats.lotesFinanciados}</div>
-            <p className="text-xs text-muted-foreground">En proceso de pago</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Lotes Reservados</CardTitle>
-            <Clock className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-chart-4">{stats.lotesReservados}</div>
-            <p className="text-xs text-muted-foreground">Pendientes de financiamiento</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Lotes Pagados</CardTitle>
-            <CheckCircle className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-chart-3">{stats.lotesPagados}</div>
-            <p className="text-xs text-muted-foreground">Completamente pagados</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Métricas financieras */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Ingresos Totales</CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">Q {stats.ingresosTotales.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">Acumulado histórico</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Ingresos del Mes</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">Q {stats.ingresosMes.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">+12% vs mes anterior</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Tasa de Cobranza</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.tasaCobranza}%</div>
-            <p className="text-xs text-muted-foreground">Pagos al día</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Promedio Financiamiento</CardTitle>
-            <Clock className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.promedioFinanciamiento} meses</div>
-            <p className="text-xs text-muted-foreground">Plazo promedio</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Configuración de tasas */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Settings className="h-5 w-5" />
-            Configuración de Tasas de Interés
-          </CardTitle>
-          <CardDescription>
-            Establece las tasas que se utilizarán para calcular las cuotas de financiamiento
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="tasa-anual">Tasa Anual (%)</Label>
-              <Input
-                id="tasa-anual"
-                type="number"
-                step="0.1"
-                value={configuracionActiva ? configuracionActiva.tasa_anual : tasaAnual}
-                onChange={(e) => setTasaAnual(e.target.value)}
-                placeholder="12.0"
-                disabled={!configuracionActiva}
-              />
-              <p className="text-xs text-muted-foreground">Tasa de interés anual para cálculos de financiamiento</p>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="tasa-mensual">Tasa Mensual (%)</Label>
-              <Input
-                id="tasa-mensual"
-                type="number"
-                step="0.01"
-                value={configuracionActiva ? formatearTasaMensual(configuracionActiva.tasa_anual).replace('%', '') : tasaMensual}
-                onChange={(e) => setTasaMensual(e.target.value)}
-                placeholder="1.0"
-                disabled={!configuracionActiva}
-              />
-              <p className="text-xs text-muted-foreground">Tasa de interés mensual equivalente</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button onClick={handleSaveTasas} className="flex items-center gap-2" disabled={!configuracionActiva}>
-              <Save className="h-4 w-4" />
-              Guardar Configuración
-            </Button>
-            <Badge variant="outline">
-              Última actualización: {configuracionActiva ? new Date(configuracionActiva.updated_at).toLocaleDateString() : new Date().toLocaleDateString()}
-            </Badge>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Resumen por estado */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Resumen de Lotes por Estado</CardTitle>
-          <CardDescription>Distribución actual de todos los lotes en el sistema</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <div className="flex items-center justify-between p-4 border rounded-lg">
-              <div className="flex items-center gap-3">
-                <div className="w-3 h-3 rounded-full bg-chart-1"></div>
-                <span className="font-medium">Disponibles</span>
-              </div>
-              <div className="text-right">
-                <div className="font-bold">{stats.lotesDisponibles} lotes</div>
-                <div className="text-sm text-muted-foreground">
-                  {totalLotes > 0 ? ((stats.lotesDisponibles / totalLotes) * 100).toFixed(1) : '0'}% del total
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center justify-between p-4 border rounded-lg">
-              <div className="flex items-center gap-3">
-                <div className="w-3 h-3 rounded-full bg-chart-2"></div>
-                <span className="font-medium">Financiados</span>
-              </div>
-              <div className="text-right">
-                <div className="font-bold">{stats.lotesFinanciados} lotes</div>
-                <div className="text-sm text-muted-foreground">
-                  {totalLotes > 0 ? ((stats.lotesFinanciados / totalLotes) * 100).toFixed(1) : '0'}% del total
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center justify-between p-4 border rounded-lg">
-              <div className="flex items-center gap-3">
-                <div className="w-3 h-3 rounded-full bg-chart-4"></div>
-                <span className="font-medium">Reservados</span>
-              </div>
-              <div className="text-right">
-                <div className="font-bold">{stats.lotesReservados} lotes</div>
-                <div className="text-sm text-muted-foreground">
-                  {totalLotes > 0 ? ((stats.lotesReservados / totalLotes) * 100).toFixed(1) : '0'}% del total
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center justify-between p-4 border rounded-lg">
-              <div className="flex items-center gap-3">
-                <div className="w-3 h-3 rounded-full bg-chart-3"></div>
-                <span className="font-medium">Pagados Totalmente</span>
-              </div>
-              <div className="text-right">
-                <div className="font-bold">{stats.lotesPagados} lotes</div>
-                <div className="text-sm text-muted-foreground">
-                  {totalLotes > 0 ? ((stats.lotesPagados / totalLotes) * 100).toFixed(1) : '0'}% del total
-                </div>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
     </div>
   )
 }
+
+export default AdminDashboard

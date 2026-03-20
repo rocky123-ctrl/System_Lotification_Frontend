@@ -1,12 +1,12 @@
 import { DashboardLayout } from "@/components/dashboard-layout"
-import { Vendedores } from "@/components/vendedores"
+import { Empleados as EmpleadosComponent } from "@/components/vendedores"
 import ProtectedRoute from "@/components/protected-route"
 
-export default function VendedoresPage() {
+export default function EmpleadosPage() {
   return (
     <ProtectedRoute>
       <DashboardLayout>
-        <Vendedores />
+        <EmpleadosComponent />
       </DashboardLayout>
     </ProtectedRoute>
   )

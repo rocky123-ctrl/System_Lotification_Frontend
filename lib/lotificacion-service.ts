@@ -66,6 +66,18 @@ export interface LoteDetallePlano {
   [key: string]: unknown
 }
 
+/** Lote disponible para relacionar con un path del plano (sin identificador). */
+export interface LoteSinIdentificadorItem {
+  id: number
+  identificador: string | null
+  manzana: number
+  manzana_nombre?: string
+  numero_lote: string
+  metros_cuadrados: string
+  valor_total: string
+  estado: string
+}
+
 // Servicio de lotificación
 export const lotificacionService = {
   // Obtener todas las lotificaciones (activas e inactivas)
@@ -193,11 +205,22 @@ export const lotificacionService = {
     return Array.isArray(response) ? response : []
   },
 
-  /** Detalle de un lote por identificador dentro de la lotificación. */
-  async getLotePorIdentificador(lotificacionId: number, identificador: string): Promise<LoteDetallePlano> {
-    return apiRequest<LoteDetallePlano>(
-      `/lotes/lotificaciones/${lotificacionId}/lotes/${encodeURIComponent(identificador)}/`
-    )
+  /**
+   * Detalle de un lote por identificador dentro de la lotificación.
+   * Si el lote del plano aún no tiene información relacionada en BD, el backend responde 404;
+   * en ese caso se retorna null (no se lanza error) para mostrar la UI de "sin información".
+   */
+  async getLotePorIdentificador(lotificacionId: number, identificador: string): Promise<LoteDetallePlano | null> {
+    try {
+      return await apiRequest<LoteDetallePlano>(
+        `/lotes/lotificaciones/${lotificacionId}/lotes/${encodeURIComponent(identificador)}/`
+      )
+    } catch (error: any) {
+      if (error?.status === 404) {
+        return null
+      }
+      throw error
+    }
   },
 
   /**
@@ -214,9 +237,58 @@ export const lotificacionService = {
       estado?: string
     }
   ): Promise<LoteDetallePlano> {
+    return apiRequest<LoteDetallePlano>(`/lotes/lotificaciones/${lotificacionId}/registrar-lote/`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    })
+  },
+
+  /** Listar lotes de la lotificación que aún no tienen identificador asignado (para relacionar con SVG). */
+  async getLotesSinIdentificador(lotificacionId: number): Promise<LoteSinIdentificadorItem[]> {
+    const response = await apiRequest<any>(
+      `/lotes/lotificaciones/${lotificacionId}/lotes-sin-identificador/`
+    )
+    const list = Array.isArray(response) ? response : response?.results ?? []
+    return list.map((l: any) => ({
+      id: l.id,
+      identificador: l.identificador ?? null,
+      manzana: l.manzana,
+      manzana_nombre: l.manzana_nombre,
+      numero_lote: l.numero_lote,
+      metros_cuadrados: l.metros_cuadrados,
+      valor_total: l.valor_total,
+      estado: l.estado,
+    }))
+  },
+
+  /**
+   * Relacionar un lote existente (creado manualmente) con un identificador del plano SVG.
+   * Actualiza manzana, número de lote e identificador en el backend.
+   */
+  async relacionarLoteExistente(
+    lotificacionId: number,
+    payload: { lote_id: number; identificador: string }
+  ): Promise<LoteDetallePlano> {
     return apiRequest<LoteDetallePlano>(
-      `/lotes/lotificaciones/${lotificacionId}/registrar-lote/`,
-      { method: 'POST', body: JSON.stringify(payload) }
+      `/lotes/lotificaciones/${lotificacionId}/relacionar-lote/`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }
+    )
+  },
+
+  /**
+   * Desvincular un lote del plano: quita su identificador para que vuelva a estar
+   * disponible para relacionar con otro path del SVG.
+   */
+  async desvincularLote(lotificacionId: number, loteId: number): Promise<LoteDetallePlano> {
+    return apiRequest<LoteDetallePlano>(
+      `/lotes/lotificaciones/${lotificacionId}/desvincular-lote/`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ lote_id: loteId }),
+      }
     )
   },
 
@@ -237,6 +309,8 @@ export const lotificacionService = {
   },
 
   // Subir plano SVG de una lotificación
+  // NOTA: FormData requiere un enfoque especial. Se usa fetch con token obtenido de refreshTokenIfNeeded
+  // para mantener la autenticación centralizada
   async subirPlanoSvg(id: number, archivo: File): Promise<Lotificacion> {
     try {
       const formData = new FormData()
@@ -246,14 +320,19 @@ export const lotificacionService = {
       const API_BASE_URL = config.api.baseUrl + '/api'
       const url = `${API_BASE_URL}/lotes/lotificaciones/${id}/subir-plano-svg/`
       
-      // Obtener token
+      // Obtener token usando la función centralizada que maneja renovación automática
       const { refreshTokenIfNeeded } = await import('./api')
       const token = await refreshTokenIfNeeded()
+
+      // Si no hay token válido, lanzar error
+      if (!token) {
+        throw new Error('No hay sesión activa. Por favor, inicia sesión nuevamente.')
+      }
 
       const response = await fetch(url, {
         method: 'POST',
         headers: {
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+          'Authorization': `Bearer ${token}`,
           // NO incluir Content-Type para FormData, el navegador lo hace automáticamente
         },
         body: formData,
