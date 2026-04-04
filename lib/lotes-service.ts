@@ -20,6 +20,7 @@ export interface Lote {
 }
 
 export interface LoteCreate {
+  identificador?: string
   manzana: number
   numero_lote: string
   metros_cuadrados: string
@@ -29,6 +30,7 @@ export interface LoteCreate {
 }
 
 export interface LoteUpdate {
+  identificador?: string
   version: number
   manzana?: number
   numero_lote?: string

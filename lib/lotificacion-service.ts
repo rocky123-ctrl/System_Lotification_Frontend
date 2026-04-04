@@ -49,12 +49,15 @@ export interface LotePlanoItem {
   activo: boolean
   manzana?: number
   manzana_nombre?: string
+  numero_lote?: string
+  plano_svg_id?: string | null
 }
 
 /** Detalle completo de lote (respuesta de GET lotes/{identificador}/). */
 export interface LoteDetallePlano {
   id: number
   identificador: string | null
+  plano_svg_id?: string | null
   numero_lote: string
   metros_cuadrados: string
   valor_total: string

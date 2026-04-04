@@ -15,6 +15,8 @@ import { registrarCliente } from "@/lib/clientes-service"
 interface FormData {
   nombres: string
   apellidos: string
+  dpi: string
+  nit: string
   telefono: string
   email: string
   direccion: string
@@ -30,6 +32,8 @@ export function RegistroClienteModal({ onClienteRegistrado }: RegistroClienteMod
   const [formData, setFormData] = useState<FormData>({
     nombres: '',
     apellidos: '',
+    dpi: '',
+    nit: '',
     telefono: '',
     email: '',
     direccion: '',
@@ -50,8 +54,8 @@ export function RegistroClienteModal({ onClienteRegistrado }: RegistroClienteMod
     setSuccess(null)
 
     // Validaciones básicas
-    if (!formData.nombres.trim() || !formData.apellidos.trim() || !formData.direccion.trim()) {
-      setError('Los campos Nombres, Apellidos y Dirección son obligatorios')
+    if (!formData.nombres.trim() || !formData.apellidos.trim() || !formData.dpi.trim() || !formData.nit.trim() || !formData.direccion.trim()) {
+      setError('Los campos Nombres, Apellidos, DPI, NIT y Dirección son obligatorios')
       return
     }
 
@@ -62,6 +66,8 @@ export function RegistroClienteModal({ onClienteRegistrado }: RegistroClienteMod
       setFormData({
         nombres: '',
         apellidos: '',
+        dpi: '',
+        nit: '',
         telefono: '',
         email: '',
         direccion: '',
@@ -80,6 +86,8 @@ export function RegistroClienteModal({ onClienteRegistrado }: RegistroClienteMod
     setFormData({
       nombres: '',
       apellidos: '',
+      dpi: '',
+      nit: '',
       telefono: '',
       email: '',
       direccion: '',
@@ -137,6 +145,32 @@ export function RegistroClienteModal({ onClienteRegistrado }: RegistroClienteMod
                 name="apellidos"
                 type="text"
                 value={formData.apellidos}
+                onChange={handleChange}
+                required
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="dpi">DPI *</Label>
+              <Input
+                id="dpi"
+                name="dpi"
+                type="text"
+                value={formData.dpi}
+                onChange={handleChange}
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="nit">NIT *</Label>
+              <Input
+                id="nit"
+                name="nit"
+                type="text"
+                value={formData.nit}
                 onChange={handleChange}
                 required
               />

@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState, useCallback } from "react"
+import { useEffect, useRef, useState, useCallback, useMemo } from "react"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -12,15 +12,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Loader2, AlertCircle, ZoomIn, ZoomOut, RotateCcw, Pencil, ShoppingCart, Unlink } from "lucide-react"
+import { Loader2, AlertCircle, ZoomIn, ZoomOut, RotateCcw, Pencil, ShoppingCart, Unlink, Check, ChevronsUpDown } from "lucide-react"
 import {
   lotificacionService,
+  type Lotificacion,
   type LotePlanoItem,
   type LoteDetallePlano,
   type LoteSinIdentificadorItem,
 } from "@/lib/lotificacion-service"
-import { lotesService } from "@/lib/lotes-service"
+import { lotesService, type LoteEstado } from "@/lib/lotes-service"
 import { cn } from "@/lib/utils"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 
 const MIN_SCALE = 0.3
 const MAX_SCALE = 4
@@ -47,6 +50,17 @@ const ESTADO_LABEL: Record<string, string> = {
 
 const DEFAULT_FILL = "#94a3b8"
 
+/**
+ * Normaliza una manzana y número de lote para crear una clave hash.
+ * - Manzana: se convierte a mayúsculas y quita espacios.
+ * - Número: se quitan los ceros a la izquierda para emparejar "02" con "2".
+ */
+export function buildKey(manzana: string | undefined | null, numero: string | undefined | null): string {
+  const m = (manzana || "").trim().toUpperCase()
+  const n = (numero || "").trim().replace(/^0+/, "") || "0"
+  return `${m}:${n}`
+}
+
 /** Parsea el identificador del plano (ej. "A-02" o "MZ03-L07") a manzana y número de lote. */
 function parseIdentificadorPlano(
   identificador: string | null
@@ -69,6 +83,7 @@ export function PlanoInteractivo({ lotificacionId, className }: PlanoInteractivo
   const containerRef = useRef<HTMLDivElement>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [lotificacionActual, setLotificacionActual] = useState<Lotificacion | null>(null)
   const [svgText, setSvgText] = useState<string | null>(null)
   const [lotesList, setLotesList] = useState<LotePlanoItem[]>([])
   const [modalOpen, setModalOpen] = useState(false)
@@ -78,7 +93,9 @@ export function PlanoInteractivo({ lotificacionId, className }: PlanoInteractivo
   const [registerModalOpen, setRegisterModalOpen] = useState(false)
   const [registerSubmitting, setRegisterSubmitting] = useState(false)
   const [registerError, setRegisterError] = useState<string | null>(null)
+  const [registerIdentificadorManual, setRegisterIdentificadorManual] = useState(false)
   const [registerForm, setRegisterForm] = useState({
+    identificador: "",
     metros_cuadrados: "",
     valor_total: "",
     costo_instalacion: "5000",
@@ -87,7 +104,9 @@ export function PlanoInteractivo({ lotificacionId, className }: PlanoInteractivo
   const [editModalOpen, setEditModalOpen] = useState(false)
   const [editSubmitting, setEditSubmitting] = useState(false)
   const [editError, setEditError] = useState<string | null>(null)
+  const [editIdentificadorManual, setEditIdentificadorManual] = useState(false)
   const [editForm, setEditForm] = useState({
+    identificador: "",
     metros_cuadrados: "",
     valor_total: "",
     costo_instalacion: "",
@@ -97,10 +116,12 @@ export function PlanoInteractivo({ lotificacionId, className }: PlanoInteractivo
   const [relateLoading, setRelateLoading] = useState(false)
   const [relateSubmitting, setRelateSubmitting] = useState(false)
   const [relateError, setRelateError] = useState<string | null>(null)
-  const [relateOptions, setRelateOptions] = useState<LoteSinIdentificadorItem[]>([])
+  const [relateOptions, setRelateOptions] = useState<any[]>([])
   const [relateSelectedId, setRelateSelectedId] = useState<string>("")
   const [relateFilterManzana, setRelateFilterManzana] = useState<string>("__all__")
+  const [comboboxOpen, setComboboxOpen] = useState(false)
   const [desvincularLoading, setDesvincularLoading] = useState(false)
+  const [vinculadosIds, setVinculadosIds] = useState<Set<number>>(new Set())
   const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 })
   const [isPanning, setIsPanning] = useState(false)
   const [panStart, setPanStart] = useState({ x: 0, y: 0 })
@@ -115,11 +136,13 @@ export function PlanoInteractivo({ lotificacionId, className }: PlanoInteractivo
     setLotesList([])
 
     Promise.all([
+      lotificacionService.getLotificacion(lotificacionId),
       lotificacionService.getPlanoSvg(lotificacionId),
       lotificacionService.getLotesPlano(lotificacionId),
     ])
-      .then(([svg, lotes]) => {
+      .then(([lotificacion, svg, lotes]) => {
         if (!cancelled) {
+          setLotificacionActual(lotificacion)
           setSvgText(svg)
           setLotesList(lotes)
         }
@@ -137,6 +160,43 @@ export function PlanoInteractivo({ lotificacionId, className }: PlanoInteractivo
       cancelled = true
     }
   }, [lotificacionId])
+
+  useEffect(() => {
+    if (registerModalOpen && modalIdentificador && !registerIdentificadorManual) {
+      const parsed = parseIdentificadorPlano(modalIdentificador)
+      if (parsed && lotificacionActual) {
+        const abrev = lotificacionActual.nombre.substring(0, 3).toUpperCase()
+        setRegisterForm(f => ({ ...f, identificador: `${abrev}-${parsed.manzanaNombre}-${parsed.numeroLote}`.toUpperCase() }))
+      } else {
+        setRegisterForm(f => ({ ...f, identificador: modalIdentificador }))
+      }
+    }
+  }, [registerModalOpen, modalIdentificador, registerIdentificadorManual, lotificacionActual])
+
+  useEffect(() => {
+    if (editModalOpen && modalLote && !editIdentificadorManual) {
+      setEditForm(f => ({ ...f, identificador: modalLote.identificador ?? "" }))
+    }
+  }, [editModalOpen, modalLote, editIdentificadorManual])
+
+  // Hashmap O(1) construido a partir de lotesList (se recalcula sólo cuando lotesList cambia)
+  const mapLotesByKey = useMemo(() => {
+    const map = new Map<string, LotePlanoItem>()
+    lotesList.forEach((l) => {
+      // 1. Clave estructurada (Prioridad Base)
+      if (l.manzana_nombre && l.numero_lote) {
+        map.set(buildKey(l.manzana_nombre, l.numero_lote), l)
+      }
+      // 2. Override manual estricto (Prioridad Absoluta)
+      if (l.plano_svg_id) {
+        map.set(l.plano_svg_id.toUpperCase(), l)
+      } else if (l.identificador) {
+        // Fallback por retrocompatibilidad vieja
+        map.set(l.identificador.toUpperCase(), l) 
+      }
+    })
+    return map
+  }, [lotesList])
 
   // Insertar SVG en el DOM (sin dangerouslySetInnerHTML), pintar por estado y asignar eventos
   useEffect(() => {
@@ -159,24 +219,39 @@ export function PlanoInteractivo({ lotificacionId, className }: PlanoInteractivo
       }
     }
 
-    const mapIdentificadorEstado = new Map<string, string>()
-    lotesList.forEach((l) => {
-      if (l.identificador) {
-        mapIdentificadorEstado.set(l.identificador, l.estado)
-      }
-    })
-
     container.innerHTML = ""
     container.appendChild(svgEl)
 
     const paths = container.querySelectorAll<SVGPathElement>("path[id]")
     const cleanup: Array<() => void> = []
+    const nuevosVinculados = new Set<number>()
 
     paths.forEach((path) => {
       const id = path.getAttribute("id")
       if (!id) return
 
-      const estado = mapIdentificadorEstado.get(id)
+      let loteEncontrado: LotePlanoItem | undefined;
+      // Intento 1: Prioridad absoluta al SVG ID override
+      loteEncontrado = mapLotesByKey.get(id.toUpperCase())
+      
+      // Intento 2: Lookup por clave lógica O(1)
+      if (!loteEncontrado) {
+        const parsed = parseIdentificadorPlano(id)
+        if (parsed) {
+          const key = buildKey(parsed.manzanaNombre, parsed.numeroLote)
+          const loteCandidato = mapLotesByKey.get(key)
+          // Solo lo aceptamos si este candidato NO está vinculado manualmente a otro Path diferente
+          if (loteCandidato && !loteCandidato.plano_svg_id) {
+             loteEncontrado = loteCandidato
+          }
+        }
+      }
+
+      if (loteEncontrado) {
+        nuevosVinculados.add(loteEncontrado.id)
+      }
+
+      const estado = loteEncontrado ? loteEncontrado.estado : null
       const fill = estado ? ESTADO_COLOR[estado] ?? DEFAULT_FILL : DEFAULT_FILL
       path.setAttribute("fill", fill)
       path.style.cursor = "pointer"
@@ -197,11 +272,16 @@ export function PlanoInteractivo({ lotificacionId, className }: PlanoInteractivo
         setLoadingLote(true)
         setModalOpen(true)
         setModalLote(null)
-        lotificacionService
-          .getLotePorIdentificador(lotificacionId, id)
-          .then((data) => setModalLote(data))
-          .catch(() => setModalLote(null))
-          .finally(() => setLoadingLote(false))
+        
+        if (loteEncontrado) {
+           lotesService.getLote(loteEncontrado.id)
+             .then((data) => setModalLote(data as any as LoteDetallePlano))
+             .catch(() => setModalLote(null))
+             .finally(() => setLoadingLote(false))
+        } else {
+           setModalLote(null)
+           setLoadingLote(false)
+        }
       }
 
       path.addEventListener("mouseenter", onEnter)
@@ -214,11 +294,13 @@ export function PlanoInteractivo({ lotificacionId, className }: PlanoInteractivo
       })
     })
 
+    setVinculadosIds(nuevosVinculados)
+
     return () => {
       cleanup.forEach((fn) => fn())
       container.innerHTML = ""
     }
-  }, [svgText, lotesList, lotificacionId])
+  }, [svgText, lotesList, lotificacionId, lotificacionActual])
 
   const viewportRef = useRef<HTMLDivElement>(null)
 
@@ -383,11 +465,13 @@ export function PlanoInteractivo({ lotificacionId, className }: PlanoInteractivo
                   size="sm"
                   onClick={() => {
                     setEditForm({
+                      identificador: modalLote.identificador ?? "",
                       metros_cuadrados: String(modalLote.metros_cuadrados ?? ""),
                       valor_total: String(modalLote.valor_total ?? ""),
                       costo_instalacion: String(modalLote.costo_instalacion ?? ""),
                       estado: modalLote.estado || "disponible",
                     })
+                    setEditIdentificadorManual(true)
                     setEditError(null)
                     setEditModalOpen(true)
                   }}
@@ -448,11 +532,13 @@ export function PlanoInteractivo({ lotificacionId, className }: PlanoInteractivo
                 type="button"
                 onClick={() => {
                   setRegisterForm({
+                    identificador: modalIdentificador ?? "",
                     metros_cuadrados: "",
                     valor_total: "",
                     costo_instalacion: "5000",
                     estado: "disponible",
                   })
+                  setRegisterIdentificadorManual(false)
                   setRegisterError(null)
                   setRegisterModalOpen(true)
                 }}
@@ -469,8 +555,9 @@ export function PlanoInteractivo({ lotificacionId, className }: PlanoInteractivo
                   setRelateModalOpen(true)
                   setRelateLoading(true)
                   try {
-                    const list = await lotificacionService.getLotesSinIdentificador(lotificacionId)
-                    setRelateOptions(list)
+                    const list = await lotesService.getLotes({ lotificacion: lotificacionId })
+                    const disponibles = list.filter((l: any) => !vinculadosIds.has(l.id))
+                    setRelateOptions(disponibles)
                     setRelateSelectedId("")
                   } catch (err: any) {
                     setRelateError(
@@ -524,7 +611,7 @@ export function PlanoInteractivo({ lotificacionId, className }: PlanoInteractivo
               }
               try {
                 const created = await lotificacionService.registrarLoteDesdePlano(lotificacionId, {
-                  identificador: modalIdentificador,
+                  identificador: registerForm.identificador || modalIdentificador,
                   metros_cuadrados: metros,
                   valor_total: valor,
                   costo_instalacion: costo,
@@ -545,7 +632,24 @@ export function PlanoInteractivo({ lotificacionId, className }: PlanoInteractivo
           >
             <div className="space-y-2">
               <Label>Identificador</Label>
-              <Input value={modalIdentificador ?? ""} readOnly className="bg-muted" />
+              <div className="flex gap-2">
+                  <Input
+                    value={registerForm.identificador}
+                    onChange={(e) => setRegisterForm((f) => ({ ...f, identificador: e.target.value }))}
+                    placeholder="Ej: PRA-X-01"
+                    readOnly={!registerIdentificadorManual}
+                    className={registerIdentificadorManual ? "" : "bg-muted"}
+                  />
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    size="icon" 
+                    onClick={() => setRegisterIdentificadorManual(!registerIdentificadorManual)}
+                    title={registerIdentificadorManual ? "Volver automático" : "Editar manualmente"}
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="reg-metros">Metros cuadrados *</Label>
@@ -651,8 +755,8 @@ export function PlanoInteractivo({ lotificacionId, className }: PlanoInteractivo
           <DialogHeader>
             <DialogTitle>Relacionar con lote existente</DialogTitle>
             <DialogDescription>
-              Solo se puede vincular con un lote que tenga la misma manzana y el mismo número que
-              este lote del plano ({modalIdentificador ?? "—"}). Seleccione uno de los que coinciden.
+              Seleccione el lote del sistema con el que desea vincular este espacio del plano ({modalIdentificador ?? "—"}).
+              Puede buscar por número de lote o identificador existente.
             </DialogDescription>
           </DialogHeader>
           {relateLoading ? (
@@ -666,22 +770,7 @@ export function PlanoInteractivo({ lotificacionId, className }: PlanoInteractivo
             </p>
           ) : (() => {
             const parsed = parseIdentificadorPlano(modalIdentificador)
-            const relateOptionsMatch = parsed
-              ? relateOptions.filter(
-                  (l) =>
-                    (l.manzana_nombre ?? "").trim() === parsed.manzanaNombre &&
-                    String(l.numero_lote ?? "").trim() === parsed.numeroLote
-                )
-              : []
-            if (relateOptionsMatch.length === 0) {
-              return (
-                <p className="text-sm text-destructive py-4">
-                  No se puede vincular: no hay ningún lote sin asignar con la misma manzana y
-                  número que este lote del plano ({modalIdentificador ?? "—"}). Solo se permite
-                  vincular cuando la información coincide.
-                </p>
-              )
-            }
+            const relateOptionsMatch = relateOptions
             return (
             <form
               className="space-y-4"
@@ -694,11 +783,25 @@ export function PlanoInteractivo({ lotificacionId, className }: PlanoInteractivo
                 setRelateError(null)
                 setRelateSubmitting(true)
                 try {
+                  const selected = relateOptionsMatch.find((l) => String(l.id) === relateSelectedId)
+                  if (!selected) return
+
+                  let identifierToSave = selected.identificador
+                  if (!identifierToSave) {
+                    const parsed = parseIdentificadorPlano(modalIdentificador)
+                    if (parsed && lotificacionActual) {
+                      const abrev = lotificacionActual.nombre.substring(0, 3).toUpperCase()
+                      identifierToSave = `${abrev}-${parsed.manzanaNombre}-${parsed.numeroLote}`.toUpperCase()
+                    } else {
+                      identifierToSave = modalIdentificador
+                    }
+                  }
+
                   const updated = await lotificacionService.relacionarLoteExistente(
                     lotificacionId,
                     {
                       lote_id: parseInt(relateSelectedId, 10),
-                      identificador: modalIdentificador,
+                      identificador: identifierToSave,
                     }
                   )
                   const list = await lotificacionService.getLotesPlano(lotificacionId)
@@ -714,27 +817,64 @@ export function PlanoInteractivo({ lotificacionId, className }: PlanoInteractivo
                 }
               }}
             >
-              <div className="space-y-2">
-                <Label>Lote creado sin relacionar (misma manzana y número)</Label>
-                <Select
-                  value={relateSelectedId}
-                  onValueChange={(v) => setRelateSelectedId(v)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccione un lote" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {relateOptionsMatch.map((lote) => (
-                      <SelectItem key={lote.id} value={String(lote.id)}>
-                        {`${lote.manzana_nombre ?? `Manzana ${lote.manzana}`} - Lote ${
-                          lote.numero_lote
-                        } (Q ${parseFloat(lote.valor_total).toLocaleString("es-GT", {
-                          minimumFractionDigits: 2,
-                        })})`}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <div className="space-y-2 flex flex-col">
+                <Label>Buscar y seleccionar lote</Label>
+                <Popover open={comboboxOpen} onOpenChange={setComboboxOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={comboboxOpen}
+                      className="w-full justify-between font-normal"
+                    >
+                      {relateSelectedId
+                        ? (() => {
+                            const selected = relateOptionsMatch.find(
+                              (l) => String(l.id) === relateSelectedId
+                            )
+                            if (!selected) return "Seleccione un lote..."
+                            return `${selected.manzana_nombre ?? `Manzana ${selected.manzana}`} - Lote ${selected.numero_lote} ${selected.identificador ? `(${selected.identificador})` : ''}`
+                          })()
+                        : "Seleccione un lote..."}
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[420px] p-0" align="start">
+                    <Command>
+                      <CommandInput placeholder="Buscar por identificador, manzana o número..." />
+                      <CommandList>
+                        <CommandEmpty>No se encontraron lotes.</CommandEmpty>
+                        <CommandGroup>
+                          {relateOptionsMatch.map((lote) => (
+                            <CommandItem
+                              key={lote.id}
+                              value={`${lote.manzana_nombre ?? `Manzana ${lote.manzana}`} Lote ${lote.numero_lote} ${lote.identificador ?? ''}`}
+                              onSelect={() => {
+                                setRelateSelectedId(String(lote.id))
+                                setComboboxOpen(false)
+                              }}
+                            >
+                              <Check
+                                className={cn(
+                                  "mr-2 h-4 w-4",
+                                  relateSelectedId === String(lote.id) ? "opacity-100" : "opacity-0"
+                                )}
+                              />
+                              <div className="flex flex-col">
+                                <span>
+                                  {`${lote.manzana_nombre ?? `Manzana ${lote.manzana}`} - Lote ${lote.numero_lote}`}
+                                </span>
+                                <span className="text-xs text-muted-foreground">
+                                  {lote.identificador ? `ID: ${lote.identificador}` : "Sin identificador"} | Q {parseFloat(lote.valor_total).toLocaleString("es-GT", { minimumFractionDigits: 2 })}
+                                </span>
+                              </div>
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
               </div>
               {relateError && (
                 <p className="text-sm text-destructive">{relateError}</p>
@@ -796,11 +936,12 @@ export function PlanoInteractivo({ lotificacionId, className }: PlanoInteractivo
               }
               try {
                 const updated = await lotesService.updateLote(modalLote.id, {
+                  identificador: editForm.identificador || undefined,
                   version: modalLote.version ?? 0,
                   metros_cuadrados: String(metros),
                   valor_total: String(valor),
                   costo_instalacion: String(costo),
-                  estado: editForm.estado,
+                  estado: editForm.estado as LoteEstado,
                   activo: true,
                 })
                 const list = await lotificacionService.getLotesPlano(lotificacionId)
@@ -824,7 +965,24 @@ export function PlanoInteractivo({ lotificacionId, className }: PlanoInteractivo
           >
             <div className="space-y-2">
               <Label>Identificador</Label>
-              <Input value={modalLote?.identificador ?? ""} readOnly className="bg-muted" />
+              <div className="flex gap-2">
+                  <Input
+                    value={editForm.identificador}
+                    onChange={(e) => setEditForm((f) => ({ ...f, identificador: e.target.value }))}
+                    placeholder="Ej: PRA-X-01"
+                    readOnly={!editIdentificadorManual}
+                    className={editIdentificadorManual ? "" : "bg-muted"}
+                  />
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    size="icon" 
+                    onClick={() => setEditIdentificadorManual(!editIdentificadorManual)}
+                    title={editIdentificadorManual ? "Volver automático" : "Editar manualmente"}
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="edit-metros">Metros cuadrados *</Label>

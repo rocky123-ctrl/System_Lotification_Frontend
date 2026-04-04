@@ -4,6 +4,8 @@ export interface Cliente {
   id: number
   nombres: string
   apellidos: string
+  dpi?: string
+  nit?: string
   telefono?: string
   email?: string
   direccion: string

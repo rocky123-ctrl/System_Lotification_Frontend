@@ -45,7 +45,9 @@ export function Lotes() {
   const [createLotePrefill, setCreateLotePrefill] = useState<{ manzana: number; numero_lote: string } | null>(null)
   const [manzanas, setManzanas] = useState<{ id: number; nombre: string }[]>([])
   const [isSubmittingLote, setIsSubmittingLote] = useState(false)
+  const [createIdentificadorManual, setCreateIdentificadorManual] = useState(false)
   const [createLoteForm, setCreateLoteForm] = useState({
+    identificador: "",
     manzanaId: "",
     numero_lote: "",
     metros_cuadrados: "0",
@@ -59,13 +61,15 @@ export function Lotes() {
   const [editLoading, setEditLoading] = useState(false)
   const [editSubmitting, setEditSubmitting] = useState(false)
   const [editError, setEditError] = useState<string | null>(null)
+  const [editIdentificadorManual, setEditIdentificadorManual] = useState(false)
   const [editForm, setEditForm] = useState({
+    identificador: "",
     manzanaId: "",
     numero_lote: "",
     metros_cuadrados: "",
     valor_total: "",
     costo_instalacion: "",
-    estado: "disponible" as const,
+    estado: "disponible" as LoteEstado,
   })
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
   const [deleteLoteId, setDeleteLoteId] = useState<number | null>(null)
@@ -145,6 +149,34 @@ export function Lotes() {
     loadLotes()
   }, [loadLotes])
 
+  // Helper for generating abbreviations
+  const getLotificacionAbreviatura = useCallback(() => {
+    if (!selectedLotificacion) return "LOT"
+    const lot = lotificaciones.find(l => l.id === selectedLotificacion)
+    if (!lot) return "LOT"
+    return lot.nombre.substring(0, 3).toUpperCase()
+  }, [selectedLotificacion, lotificaciones])
+
+  // Auto-generate identificador on create
+  useEffect(() => {
+    if (!isCreateLoteOpen || createIdentificadorManual) return
+    const manzanaMatch = manzanas.find(m => String(m.id) === createLoteForm.manzanaId)
+    const mName = manzanaMatch ? manzanaMatch.nombre : ""
+    if (mName && createLoteForm.numero_lote) {
+      setCreateLoteForm(f => ({ ...f, identificador: `${getLotificacionAbreviatura()}-${mName}-${f.numero_lote}`.toUpperCase() }))
+    }
+  }, [createLoteForm.manzanaId, createLoteForm.numero_lote, createIdentificadorManual, manzanas, getLotificacionAbreviatura, isCreateLoteOpen])
+
+  // Auto-generate identificador on edit
+  useEffect(() => {
+    if (!editModalOpen || editIdentificadorManual) return
+    const manzanaMatch = manzanas.find(m => String(m.id) === editForm.manzanaId)
+    const mName = manzanaMatch ? manzanaMatch.nombre : ""
+    if (mName && editForm.numero_lote) {
+      setEditForm(f => ({ ...f, identificador: `${getLotificacionAbreviatura()}-${mName}-${f.numero_lote}`.toUpperCase() }))
+    }
+  }, [editForm.manzanaId, editForm.numero_lote, editIdentificadorManual, manzanas, getLotificacionAbreviatura, editModalOpen])
+
   // Filtrar lotes por término de búsqueda
   const filteredLotes = lotes.filter((lote) => {
     const matchesSearch =
@@ -173,6 +205,7 @@ export function Lotes() {
       (m) => m.id === info.manzana || String(m.nombre) === String(info.manzana)
     )
     setCreateLoteForm({
+      identificador: "",
       manzanaId: manzanaMatch ? String(manzanaMatch.id) : (manzanas[0] ? String(manzanas[0].id) : ""),
       numero_lote: info.numero_lote,
       metros_cuadrados: "0",
@@ -181,6 +214,7 @@ export function Lotes() {
       estado: "disponible",
     })
     setCreateLotePrefill({ manzana: info.manzana, numero_lote: info.numero_lote })
+    setCreateIdentificadorManual(false)
     setIsCreateLoteOpen(true)
   }
 
@@ -204,6 +238,7 @@ export function Lotes() {
         return
       }
       const data: LoteCreate = {
+        identificador: createLoteForm.identificador || undefined,
         manzana: parseInt(createLoteForm.manzanaId, 10),
         numero_lote: createLoteForm.numero_lote,
         metros_cuadrados: createLoteForm.metros_cuadrados,
@@ -215,6 +250,7 @@ export function Lotes() {
       setIsCreateLoteOpen(false)
       setCreateLotePrefill(null)
       setCreateLoteForm({
+        identificador: "",
         manzanaId: manzanas[0] ? String(manzanas[0].id) : "",
         numero_lote: "",
         metros_cuadrados: "0",
@@ -345,6 +381,7 @@ export function Lotes() {
                   onClick={() => {
                     setCreateLotePrefill(null)
                     setCreateLoteForm({
+                      identificador: "",
                       manzanaId: manzanas[0] ? String(manzanas[0].id) : "",
                       numero_lote: "",
                       metros_cuadrados: "0",
@@ -352,6 +389,7 @@ export function Lotes() {
                       costo_instalacion: "5000",
                       estado: "disponible",
                     })
+                    setCreateIdentificadorManual(false)
                     setIsCreateLoteOpen(true)
                   }}
                 >
@@ -502,6 +540,7 @@ export function Lotes() {
                                     const full = await lotesService.getLote(lote.id)
                                     setEditVersion((full as any).version ?? 0)
                                     setEditForm({
+                                      identificador: (full as any).identificador ?? "",
                                       manzanaId: String((full as any).manzana ?? ""),
                                       numero_lote: (full as any).numero_lote ?? "",
                                       metros_cuadrados: String((full as any).metros_cuadrados ?? ""),
@@ -509,6 +548,7 @@ export function Lotes() {
                                       costo_instalacion: String((full as any).costo_instalacion ?? ""),
                                       estado: ((full as any).estado ?? "disponible") as "disponible" | "reservado" | "pagado" | "comercial_y_bodega" | "financiado" | "pagado_y_escriturado",
                                     })
+                                    setEditIdentificadorManual(true) // By default, let's keep it manual when opening edit so it doesn't immediately overwrite the saved ID
                                   } catch {
                                     setEditError("No se pudo cargar el lote.")
                                   } finally {
@@ -578,6 +618,27 @@ export function Lotes() {
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmitCrearLote} className="space-y-4">
+            <div className="space-y-2">
+              <Label>Identificador</Label>
+              <div className="flex gap-2">
+                <Input
+                  value={createLoteForm.identificador}
+                  onChange={(e) => setCreateLoteForm((f) => ({ ...f, identificador: e.target.value }))}
+                  placeholder="Ej: PRA-X-01"
+                  readOnly={!createIdentificadorManual}
+                  className={createIdentificadorManual ? "" : "bg-muted"}
+                />
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  size="icon" 
+                  onClick={() => setCreateIdentificadorManual(!createIdentificadorManual)}
+                  title={createIdentificadorManual ? "Volver automático" : "Editar manualmente"}
+                >
+                  <Pencil className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Manzana</Label>
@@ -693,7 +754,7 @@ export function Lotes() {
           <DialogHeader>
             <DialogTitle>Editar lote</DialogTitle>
             <DialogDescription>
-              Modifique los datos del lote. El identificador (si existe) no se muestra ni se puede cambiar aquí.
+              Modifique los datos del lote. Revisa el identificador para mantener la vinculación al mapa.
             </DialogDescription>
           </DialogHeader>
           {editLoading ? (
@@ -721,6 +782,7 @@ export function Lotes() {
                 setEditSubmitting(true)
                 try {
                   const payload: LoteUpdate = {
+                    identificador: editForm.identificador || undefined,
                     version: editVersion,
                     manzana: parseInt(editForm.manzanaId, 10),
                     numero_lote: editForm.numero_lote,
@@ -740,6 +802,27 @@ export function Lotes() {
                 }
               }}
             >
+              <div className="space-y-2">
+                <Label>Identificador</Label>
+                <div className="flex gap-2">
+                  <Input
+                    value={editForm.identificador}
+                    onChange={(e) => setEditForm((f) => ({ ...f, identificador: e.target.value }))}
+                    placeholder="Ej: PRA-X-01"
+                    readOnly={!editIdentificadorManual}
+                    className={editIdentificadorManual ? "" : "bg-muted"}
+                  />
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    size="icon" 
+                    onClick={() => setEditIdentificadorManual(!editIdentificadorManual)}
+                    title={editIdentificadorManual ? "Volver automático" : "Editar manualmente"}
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Manzana</Label>

@@ -6,7 +6,7 @@ import { useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { LayoutDashboard, MapPin, FileText, Settings, Menu, X, LogOut, User, Users, ChevronDown, ChevronRight, UserPlus, Receipt, Wrench } from "lucide-react"
+import { LayoutDashboard, MapPin, FileText, Settings, Menu, X, LogOut, User, Users, ChevronDown, ChevronRight, UserPlus, Receipt, Wrench, ShoppingCart, Calculator } from "lucide-react"
 import { useAuth } from "@/contexts/auth-context"
 import { SessionStatus } from "@/components/session-status"
 
@@ -29,6 +29,8 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
   const navigation = [
     { name: "Dashboard", href: "/", icon: LayoutDashboard },
+    { name: "Venta", href: "/venta", icon: ShoppingCart },
+    { name: "Cotización", href: "/cotizacion", icon: Calculator },
     { name: "Reportes", href: "/reportes", icon: FileText },
   ]
 
@@ -39,6 +41,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
   const moduloFinancieroNavigation = [
     { name: "Empleados", href: "/vendedores", icon: Users },
+    { name: "Planillas de Pago", href: "/planillas", icon: Receipt },
   ]
 
   const clientesNavigation = [

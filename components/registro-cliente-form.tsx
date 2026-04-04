@@ -25,7 +25,8 @@ interface FormData {
   // Información Personal
   nombre: string
   apellido: string
-  numeroDocumento: string
+  dpi: string
+  nit: string
   email: string
   telefono: string
   telefonoAdicional: string
@@ -59,7 +60,8 @@ export function RegistroClienteForm() {
   const [formData, setFormData] = useState<FormData>({
     nombre: "",
     apellido: "",
-    numeroDocumento: "",
+    dpi: "",
+    nit: "",
     email: "",
     telefono: "",
     telefonoAdicional: "",
@@ -98,8 +100,8 @@ export function RegistroClienteForm() {
     setIsSubmitting(true)
 
     // Validaciones
-    if (!formData.nombre || !formData.apellido || !formData.numeroDocumento) {
-      setError("Por favor completa los campos obligatorios: Nombre, Apellido y Documento")
+    if (!formData.nombre || !formData.apellido || !formData.dpi || !formData.nit) {
+      setError("Por favor completa los campos obligatorios: Nombre, Apellido, DPI y NIT")
       setIsSubmitting(false)
       return
     }
@@ -129,7 +131,8 @@ export function RegistroClienteForm() {
         setFormData({
           nombre: "",
           apellido: "",
-          numeroDocumento: "",
+          dpi: "",
+          nit: "",
           email: "",
           telefono: "",
           telefonoAdicional: "",
@@ -160,7 +163,8 @@ export function RegistroClienteForm() {
     setFormData({
       nombre: "",
       apellido: "",
-      numeroDocumento: "",
+      dpi: "",
+      nit: "",
       email: "",
       telefono: "",
       telefonoAdicional: "",
@@ -252,15 +256,30 @@ export function RegistroClienteForm() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="numeroDocumento" className="font-semibold">
+                <Label htmlFor="dpi" className="font-semibold">
                   Documento de Identidad (DPI/CUI) <span className="text-red-500">*</span>
                 </Label>
                 <Input
-                  id="numeroDocumento"
-                  name="numeroDocumento"
+                  id="dpi"
+                  name="dpi"
                   type="text"
                   placeholder="Ej: 1234567890101"
-                  value={formData.numeroDocumento}
+                  value={formData.dpi}
+                  onChange={handleChange}
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="nit" className="font-semibold">
+                  Número de Identificación Tributaria (NIT) <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  id="nit"
+                  name="nit"
+                  type="text"
+                  placeholder="Ej: 123456-7"
+                  value={formData.nit}
                   onChange={handleChange}
                   required
                 />
