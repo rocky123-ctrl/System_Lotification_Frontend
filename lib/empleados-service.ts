@@ -10,7 +10,6 @@ export interface Empleado {
   direccion: string | null
   fecha_contratacion: string
   rol: string
-  sueldo: string | null
   porcentaje_comision: string | null
   estado: boolean
   fecha_creacion: string
@@ -26,7 +25,6 @@ export interface EmpleadoFormData {
   direccion?: string
   fecha_contratacion: string
   rol: string
-  sueldo?: string
   porcentaje_comision?: string
   estado?: boolean
   username?: string
@@ -35,19 +33,24 @@ export interface EmpleadoFormData {
 }
 
 export const empleadosService = {
-  async getEmpleados(params?: { search?: string }): Promise<Empleado[]> {
+  async getEmpleados(params?: { search?: string, page?: number, rol?: string }): Promise<{ count: number, results: Empleado[] }> {
     const searchParams = new URLSearchParams()
     if (params?.search) searchParams.set('search', params.search)
+    if (params?.page) searchParams.set('page', params.page.toString())
+    if (params?.rol) searchParams.set('rol', params.rol)
     
-    // As DRF PageNumberPagination is enabled, results might be paginated
     const endpoint = searchParams.toString() ? `/empleados/?${searchParams.toString()}` : '/empleados/'
-    const response = await apiRequest<Empleado[] | { results: Empleado[] }>(endpoint)
+    const response = await apiRequest<{ count: number, results: Empleado[] }>(endpoint)
     
-    if (Array.isArray(response)) return response
     if (response && typeof response === 'object' && 'results' in response && Array.isArray(response.results)) {
-      return response.results
+      return response
     }
-    return []
+    
+    // Fallback if not paginated or unexpected format
+    return {
+      count: Array.isArray(response) ? response.length : 0,
+      results: Array.isArray(response) ? response : []
+    }
   },
 
   async crearEmpleado(data: EmpleadoFormData): Promise<Empleado> {

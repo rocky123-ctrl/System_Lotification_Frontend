@@ -1,38 +1,24 @@
 import { config as appConfig } from './config'
+import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios'
 
 const API_BASE_URL = appConfig.api.baseUrl + '/api'
 
-// Función para redirigir al login cuando el token expire
-export function redirectToLogin() {
-  // Solo redirigir si estamos en el cliente (navegador)
+// Función para redirigir al login cuando el token expire o por inactividad
+export function redirectToLogin(reason?: string) {
   if (typeof window !== 'undefined') {
-    console.log('[API] Redirigiendo al login debido a token expirado')
-    // Limpiar todos los datos de autenticación antes de redirigir
-    localStorage.removeItem(appConfig.auth.tokenKey)
-    localStorage.removeItem(appConfig.auth.refreshTokenKey)
-    localStorage.removeItem('lotificacion_user')
-    // Redirigir al login
-    window.location.href = '/login'
+    console.log('[API] Redirigiendo al login...')
+    sessionStorage.removeItem(appConfig.auth.tokenKey)
+    sessionStorage.removeItem(appConfig.auth.refreshTokenKey)
+    sessionStorage.removeItem('lotificacion_user')
+    const queryParams = reason ? `?reason=${reason}` : ''
+    window.location.href = `/login${queryParams}`
   }
 }
 
-// Interfaces para las respuestas de la API
+// Interfaces
 interface LoginResponse {
   message: string
-  user: {
-    id: number
-    username: string
-    email: string
-    first_name: string
-    last_name: string
-    profile: {
-      phone: string | null
-      address: string | null
-      is_active: boolean
-      created_at: string
-      updated_at: string
-    }
-  }
+  user: any
   tokens: {
     refresh: string
     access: string
@@ -40,13 +26,7 @@ interface LoginResponse {
 }
 
 interface RegisterResponse {
-  user: {
-    id: number
-    username: string
-    email: string
-    first_name: string
-    last_name: string
-  }
+  user: any
   message: string
 }
 
@@ -56,16 +36,10 @@ interface UserProfile {
   email: string
   first_name: string
   last_name: string
-  profile: {
-    phone: string | null
-    address: string | null
-    is_active: boolean
-    created_at: string
-    updated_at: string
-  }
+  profile: any
 }
 
-// Clase para manejar errores de la API
+// Clase para errores
 class ApiError extends Error {
   constructor(
     message: string,
@@ -77,239 +51,187 @@ class ApiError extends Error {
   }
 }
 
-// Función para hacer peticiones HTTP con renovación automática de tokens
-export async function apiRequest<T>(
-  endpoint: string,
-  options: RequestInit = {},
-  retryCount = 0
-): Promise<T> {
-  const url = `${API_BASE_URL}${endpoint}`
-  
-  const config: RequestInit = {
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
-    ...options,
-  }
+// Instancia de Axios
+const apiInstance = axios.create({
+  baseURL: API_BASE_URL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+})
 
-  // Verificar y renovar token si es necesario
-  const token = await refreshTokenIfNeeded()
-  if (token) {
-    config.headers = {
-      ...config.headers,
-      'Authorization': `Bearer ${token}`,
+// Cola para peticiones fallidas mientras se renueva el token
+let isRefreshing = false
+let refreshSubscribers: ((token: string) => void)[] = []
+
+const subscribeTokenRefresh = (callback: (token: string) => void) => {
+  refreshSubscribers.push(callback)
+}
+
+const onTokenRefreshed = (token: string) => {
+  refreshSubscribers.map((callback) => callback(token))
+  refreshSubscribers = []
+}
+
+// Interceptor de Petición
+apiInstance.interceptors.request.use(
+  (config: InternalAxiosRequestConfig) => {
+    const token = sessionStorage.getItem(appConfig.auth.tokenKey)
+    if (token && config.headers) {
+      config.headers.Authorization = `Bearer ${token}`
     }
-  }
+    return config
+  },
+  (error) => Promise.reject(error)
+)
 
-  try {
-    const response = await fetch(url, config)
-    
-    if (!response.ok) {
-      // Si es error 401 y no hemos intentado renovar el token, intentar renovar y reintentar
-      if (response.status === 401 && retryCount === 0) {
-        console.log('[API] Token expirado, intentando renovar...')
-        try {
-          const newToken = await authService.refreshToken()
-          localStorage.setItem(appConfig.auth.tokenKey, newToken.access)
-          
-          // Reintentar la petición con el nuevo token
-          return apiRequest<T>(endpoint, options, retryCount + 1)
-        } catch (refreshError) {
-          console.error('[API] Error renovando token:', refreshError)
-          // Si no se puede renovar, redirigir al login
-          redirectToLogin()
-          throw new ApiError('Sesión expirada', 401, { originalError: refreshError })
-        }
-      }
-      
-      // Si es error 401 y ya intentamos renovar (retryCount > 0), redirigir al login
-      if (response.status === 401 && retryCount > 0) {
-        console.error('[API] Token sigue inválido después de intentar renovar')
-        redirectToLogin()
-      }
-      
-      const errorData = await response.json().catch(() => ({}))
+// Interceptor de Respuesta
+apiInstance.interceptors.response.use(
+  (response) => response,
+  async (error: AxiosError) => {
+    const { config, response } = error
+    const originalRequest = config as InternalAxiosRequestConfig & { _retry?: boolean }
+
+    if (!response) {
+      // Error de red/conexión
       throw new ApiError(
-        errorData.message || errorData.detail || `Error ${response.status}`,
-        response.status,
-        errorData
-      )
-    }
-
-    // Manejar respuestas vacías (DELETE, 204 No Content, etc.)
-    // Para DELETE y 204 No Content, no hay body
-    if (response.status === 204 || options.method === 'DELETE') {
-      return undefined as T
-    }
-
-    // Intentar parsear JSON, pero manejar respuestas vacías
-    try {
-      const text = await response.text()
-      
-      // Si no hay texto, retornar undefined
-      if (!text || text.trim() === '') {
-        return undefined as T
-      }
-      
-      // Intentar parsear JSON
-      return JSON.parse(text)
-    } catch (parseError) {
-      // Si falla el parseo pero la respuesta fue exitosa (200-299), 
-      // probablemente es una respuesta vacía válida
-      if (response.status >= 200 && response.status < 300) {
-        return undefined as T
-      }
-      // Si es un error de parseo en una respuesta exitosa, lanzar el error
-      throw parseError
-    }
-  } catch (error) {
-    if (error instanceof ApiError) {
-      throw error
-    }
-    
-    // Detectar errores de conexión específicos
-    const errorMessage = error instanceof Error ? error.message : String(error)
-    if (errorMessage.includes('ERR_CONNECTION_REFUSED') || 
-        errorMessage.includes('Failed to fetch') ||
-        errorMessage.includes('NetworkError') ||
-        errorMessage.includes('fetch failed')) {
-      throw new ApiError(
-        'No se puede conectar al servidor. Por favor, verifica que el servidor Django esté corriendo en http://localhost:8000',
+        `No se puede conectar al servidor. Verifica que el backend esté en ${appConfig.api.baseUrl}`,
         0,
         { originalError: error, type: 'CONNECTION_ERROR' }
       )
     }
+
+    const errorData = response.data as any
+
+    // 1. Manejo de Inactividad (Backend)
+    if (response.status === 401 && errorData?.code === 'inactivity_timeout') {
+      console.error('[API] Inactividad superada.')
+      redirectToLogin('inactivity')
+      return Promise.reject(new ApiError('Sesión expirada por inactividad', 401, errorData))
+    }
+
+    // 2. Manejo de Expiración de Token - Silent Refresh
+    if (response.status === 401 && !originalRequest._retry) {
+      if (isRefreshing) {
+        return new Promise((resolve) => {
+          subscribeTokenRefresh((token: string) => {
+            if (originalRequest.headers) {
+              originalRequest.headers.Authorization = `Bearer ${token}`
+            }
+            resolve(apiInstance(originalRequest))
+          })
+        })
+      }
+
+      originalRequest._retry = true
+      isRefreshing = true
+
+      try {
+        console.log('[API] Token expirado, intentando silent refresh...')
+        const refreshToken = sessionStorage.getItem(appConfig.auth.refreshTokenKey)
+        
+        if (!refreshToken) throw new Error('No refresh token')
+
+        const res = await axios.post(`${API_BASE_URL}/auth/token/refresh/`, {
+          refresh: refreshToken
+        })
+
+        const newAccessToken = res.data.access
+        // Gracias a ROTATE_REFRESH_TOKENS = True, el backend suele devolver un nuevo Refresh también
+        if (res.data.refresh) {
+          sessionStorage.setItem(appConfig.auth.refreshTokenKey, res.data.refresh)
+        }
+        sessionStorage.setItem(appConfig.auth.tokenKey, newAccessToken)
+
+        onTokenRefreshed(newAccessToken)
+        isRefreshing = false
+
+        if (originalRequest.headers) {
+          originalRequest.headers.Authorization = `Bearer ${newAccessToken}`
+        }
+        return apiInstance(originalRequest)
+      } catch (refreshError) {
+        isRefreshing = false
+        refreshSubscribers = []
+        console.error('[API] Fallo el refresco de token:', refreshError)
+        redirectToLogin('session_expired')
+        return Promise.reject(new ApiError('Sesión expirada', 401, refreshError))
+      }
+    }
+
+    return Promise.reject(
+      new ApiError(
+        errorData?.message || errorData?.detail || `Error ${response.status}`,
+        response.status,
+        errorData
+      )
+    )
+  }
+)
+
+/** Adaptador para mantener compatibilidad con las llamadas fetch previas */
+export async function apiRequest<T>(
+  endpoint: string,
+  options: RequestInit = {}
+): Promise<T> {
+  try {
+    const isPostOrPut = options.method === 'POST' || options.method === 'PUT' || options.method === 'PATCH'
     
-    throw new ApiError(
-      'Error de conexión',
-      0,
-      { originalError: error }
-    )
+    const axiosConfig = {
+      url: endpoint,
+      method: (options.method || 'GET').toLowerCase(),
+      data: isPostOrPut && typeof options.body === 'string' ? JSON.parse(options.body) : options.body,
+      headers: options.headers as any,
+    }
+
+    const response = await apiInstance.request(axiosConfig)
+    return response.data as T
+  } catch (error) {
+    throw error
   }
 }
 
-/** Petición que devuelve el cuerpo como texto (p. ej. SVG). Usa el mismo token JWT que apiRequest. */
 export async function apiRequestText(endpoint: string): Promise<string> {
-  const token = await refreshTokenIfNeeded()
-  const url = `${API_BASE_URL}${endpoint}`
-  const headers: HeadersInit = {}
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`
-  }
-  const response = await fetch(url, { headers })
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}))
-    throw new ApiError(
-      (errorData as any)?.error || (errorData as any)?.detail || `Error ${response.status}`,
-      response.status,
-      errorData
-    )
-  }
-  return response.text()
+  const response = await apiInstance.get(endpoint, { responseType: 'text' })
+  return response.data
 }
 
-// Servicios de autenticación
 export const authService = {
-  // Login
   async login(username: string, password: string): Promise<LoginResponse> {
-    return apiRequest<LoginResponse>('/auth/login/', {
-      method: 'POST',
-      body: JSON.stringify({ username, password }),
-    })
+    const res = await apiInstance.post('/auth/login/', { username, password })
+    return res.data
   },
 
-  // Registro
-  async register(userData: {
-    username: string
-    email: string
-    password: string
-    first_name: string
-    last_name: string
-  }): Promise<RegisterResponse> {
-    return apiRequest<RegisterResponse>('/auth/register/', {
-      method: 'POST',
-      body: JSON.stringify(userData),
-    })
+  async register(userData: any): Promise<RegisterResponse> {
+    const res = await apiInstance.post('/auth/register/', userData)
+    return res.data
   },
 
-  // Logout
   async logout(): Promise<void> {
-    const refreshToken = localStorage.getItem(appConfig.auth.refreshTokenKey)
+    const refreshToken = sessionStorage.getItem(appConfig.auth.refreshTokenKey)
     if (refreshToken) {
       try {
-        await apiRequest('/auth/logout/', {
-          method: 'POST',
-          body: JSON.stringify({ refresh: refreshToken }),
-        })
-      } catch (error) {
-        console.warn('Error during logout:', error)
+        await apiInstance.post('/auth/logout/', { refresh: refreshToken })
+      } catch (e) {
+        console.warn('Logout error', e)
       }
     }
+    redirectToLogin()
   },
 
-  // Renovar token
   async refreshToken(): Promise<{ access: string }> {
-    const refreshToken = localStorage.getItem(appConfig.auth.refreshTokenKey)
-    if (!refreshToken) {
-      throw new ApiError('No refresh token available', 401)
-    }
-
-    const response = await apiRequest<{ access: string }>('/auth/token/refresh/', {
-      method: 'POST',
-      body: JSON.stringify({ refresh: refreshToken }),
-    })
-    
-    return response
+    const refreshToken = sessionStorage.getItem(appConfig.auth.refreshTokenKey)
+    const res = await apiInstance.post('/auth/token/refresh/', { refresh: refreshToken })
+    return res.data
   },
 
-  // Obtener perfil del usuario
   async getProfile(): Promise<UserProfile> {
-    return apiRequest<UserProfile>('/auth/me/')
+    const res = await apiInstance.get('/auth/me/')
+    return res.data
   },
 }
 
-// Función para manejar la renovación automática de tokens
 export async function refreshTokenIfNeeded(): Promise<string | null> {
-  const token = localStorage.getItem(appConfig.auth.tokenKey)
-  const refreshToken = localStorage.getItem(appConfig.auth.refreshTokenKey)
-  
-  if (!token || !refreshToken) {
-    console.log('[API] No hay tokens disponibles - usuario no autenticado')
-    return null
-  }
-
-  try {
-    // Verificar si el token actual está expirado
-    const tokenData = JSON.parse(atob(token.split('.')[1]))
-    const currentTime = Date.now() / 1000
-    const timeUntilExpiry = tokenData.exp - currentTime
-    
-    console.log(`[API] Token expira en ${Math.round(timeUntilExpiry)} segundos`)
-    
-    // Renovar si expira en menos de 5 minutos o ya expiró
-    if (timeUntilExpiry < 300) {
-      console.log('[API] Token próximo a expirar, renovando...')
-      try {
-        const response = await authService.refreshToken()
-        localStorage.setItem(appConfig.auth.tokenKey, response.access)
-        console.log('[API] Token renovado exitosamente')
-        return response.access
-      } catch (refreshError) {
-        console.error('[API] Error renovando token:', refreshError)
-        // Si no se puede renovar, redirigir al login
-        redirectToLogin()
-        return null
-      }
-    }
-    
-    return token
-  } catch (error) {
-    console.error('[API] Error verificando token:', error)
-    // Si hay un error al verificar el token, redirigir al login
-    redirectToLogin()
-    return null
-  }
+  return sessionStorage.getItem(appConfig.auth.tokenKey)
 }
 
 export { ApiError }

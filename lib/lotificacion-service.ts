@@ -45,7 +45,8 @@ export interface LotificacionUpdate extends Partial<LotificacionCreate> {}
 export interface LotePlanoItem {
   id: number
   identificador: string | null
-  estado: string
+  uso_lote: string
+  estado_disponibilidad: string
   activo: boolean
   manzana?: number
   manzana_nombre?: string
@@ -62,7 +63,8 @@ export interface LoteDetallePlano {
   metros_cuadrados: string
   valor_total: string
   costo_instalacion: string
-  estado: string
+  uso_lote: string
+  estado_disponibilidad: string
   manzana: number
   manzana_nombre?: string
   version?: number
@@ -78,7 +80,8 @@ export interface LoteSinIdentificadorItem {
   numero_lote: string
   metros_cuadrados: string
   valor_total: string
-  estado: string
+  uso_lote: string
+  estado_disponibilidad: string
 }
 
 // Servicio de lotificación
@@ -237,7 +240,8 @@ export const lotificacionService = {
       metros_cuadrados: number
       valor_total: number
       costo_instalacion?: number
-      estado?: string
+      uso_lote?: string
+      estado_disponibilidad?: string
     }
   ): Promise<LoteDetallePlano> {
     return apiRequest<LoteDetallePlano>(`/lotes/lotificaciones/${lotificacionId}/registrar-lote/`, {
@@ -260,7 +264,8 @@ export const lotificacionService = {
       numero_lote: l.numero_lote,
       metros_cuadrados: l.metros_cuadrados,
       valor_total: l.valor_total,
-      estado: l.estado,
+      uso_lote: l.uso_lote,
+      estado_disponibilidad: l.estado_disponibilidad,
     }))
   },
 

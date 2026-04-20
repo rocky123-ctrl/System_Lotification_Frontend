@@ -21,7 +21,7 @@ import {
 import Link from "next/link"
 import { Search, Loader2, MapPin, Building2, Map, Pencil, Trash2 } from "lucide-react"
 import { usePagination } from "@/hooks/use-pagination"
-import { lotesService, type Lote, type LoteCreate, type LoteUpdate } from "@/lib/lotes-service"
+import { lotesService, type Lote, type LoteCreate, type LoteUpdate, type USO_LOTE, type ESTADO_DISPONIBILIDAD } from "@/lib/lotes-service"
 import { lotificacionService, type Lotificacion } from "@/lib/lotificacion-service"
 
 interface LoteDisplay {
@@ -30,7 +30,8 @@ interface LoteDisplay {
   numero_lote: string
   metros_cuadrados: number
   valor_total: number
-  estado: 'disponible' | 'reservado' | 'pagado' | 'comercial_y_bodega' | 'financiado' | 'pagado_y_escriturado'
+  uso_lote: 'residencial' | 'comercial_y_bodega'
+  estado_disponibilidad: 'disponible' | 'reservado' | 'financiado' | 'pagado' | 'escriturado'
 }
 
 export function Lotes() {
@@ -53,7 +54,8 @@ export function Lotes() {
     metros_cuadrados: "0",
     valor_total: "0",
     costo_instalacion: "5000",
-    estado: "disponible" as const,
+    uso_lote: "residencial" as USO_LOTE,
+    estado_disponibilidad: "disponible" as ESTADO_DISPONIBILIDAD,
   })
   const [editModalOpen, setEditModalOpen] = useState(false)
   const [editLoteId, setEditLoteId] = useState<number | null>(null)
@@ -69,7 +71,8 @@ export function Lotes() {
     metros_cuadrados: "",
     valor_total: "",
     costo_instalacion: "",
-    estado: "disponible" as LoteEstado,
+    uso_lote: "residencial" as USO_LOTE,
+    estado_disponibilidad: "disponible" as ESTADO_DISPONIBILIDAD,
   })
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
   const [deleteLoteId, setDeleteLoteId] = useState<number | null>(null)
@@ -120,22 +123,16 @@ export function Lotes() {
     try {
       setIsLoadingLotes(true)
       setError(null)
-      const [disponibles, reservados, pagados, pagadosEscriturados, comercialBodega, financiados] = await Promise.all([
-        lotesService.getLotes({ lotificacion: selectedLotificacion, estado: 'disponible' }),
-        lotesService.getLotes({ lotificacion: selectedLotificacion, estado: 'reservado' }),
-        lotesService.getLotes({ lotificacion: selectedLotificacion, estado: 'pagado' }),
-        lotesService.getLotes({ lotificacion: selectedLotificacion, estado: 'pagado_y_escriturado' }),
-        lotesService.getLotes({ lotificacion: selectedLotificacion, estado: 'comercial_y_bodega' }),
-        lotesService.getLotes({ lotificacion: selectedLotificacion, estado: 'financiado' }),
-      ])
-      const todosLotes: LoteDisplay[] = [
-        ...disponibles.map(l => ({ id: l.id, manzana: l.manzana_nombre || `Manzana ${l.manzana}`, numero_lote: l.numero_lote, metros_cuadrados: parseFloat(l.metros_cuadrados), valor_total: parseFloat(l.valor_total), estado: l.estado })),
-        ...reservados.map(l => ({ id: l.id, manzana: l.manzana_nombre || `Manzana ${l.manzana}`, numero_lote: l.numero_lote, metros_cuadrados: parseFloat(l.metros_cuadrados), valor_total: parseFloat(l.valor_total), estado: l.estado })),
-        ...pagados.map(l => ({ id: l.id, manzana: l.manzana_nombre || `Manzana ${l.manzana}`, numero_lote: l.numero_lote, metros_cuadrados: parseFloat(l.metros_cuadrados), valor_total: parseFloat(l.valor_total), estado: l.estado })),
-        ...pagadosEscriturados.map(l => ({ id: l.id, manzana: l.manzana_nombre || `Manzana ${l.manzana}`, numero_lote: l.numero_lote, metros_cuadrados: parseFloat(l.metros_cuadrados), valor_total: parseFloat(l.valor_total), estado: l.estado })),
-        ...comercialBodega.map(l => ({ id: l.id, manzana: l.manzana_nombre || `Manzana ${l.manzana}`, numero_lote: l.numero_lote, metros_cuadrados: parseFloat(l.metros_cuadrados), valor_total: parseFloat(l.valor_total), estado: l.estado })),
-        ...financiados.map(l => ({ id: l.id, manzana: l.manzana_nombre || `Manzana ${l.manzana}`, numero_lote: l.numero_lote, metros_cuadrados: parseFloat(l.metros_cuadrados), valor_total: parseFloat(l.valor_total), estado: l.estado })),
-      ]
+      const data = await lotesService.getLotes({ lotificacion: selectedLotificacion })
+      const todosLotes: LoteDisplay[] = data.results.map(l => ({ 
+        id: l.id, 
+        manzana: l.manzana_nombre || `Manzana ${l.manzana}`, 
+        numero_lote: l.numero_lote, 
+        metros_cuadrados: parseFloat(l.metros_cuadrados), 
+        valor_total: parseFloat(l.valor_total), 
+        uso_lote: l.uso_lote,
+        estado_disponibilidad: l.estado_disponibilidad 
+      }))
       setLotes(todosLotes)
     } catch (err: any) {
       console.error('[Lotes] Error cargando lotes:', err)
@@ -211,7 +208,8 @@ export function Lotes() {
       metros_cuadrados: "0",
       valor_total: "0",
       costo_instalacion: "5000",
-      estado: "disponible",
+      uso_lote: "residencial",
+      estado_disponibilidad: "disponible",
     })
     setCreateLotePrefill({ manzana: info.manzana, numero_lote: info.numero_lote })
     setCreateIdentificadorManual(false)
@@ -244,7 +242,8 @@ export function Lotes() {
         metros_cuadrados: createLoteForm.metros_cuadrados,
         valor_total: createLoteForm.valor_total,
         costo_instalacion: createLoteForm.costo_instalacion,
-        estado: createLoteForm.estado,
+        uso_lote: createLoteForm.uso_lote,
+        estado_disponibilidad: createLoteForm.estado_disponibilidad,
       }
       await lotesService.createLote(data)
       setIsCreateLoteOpen(false)
@@ -256,7 +255,8 @@ export function Lotes() {
         metros_cuadrados: "0",
         valor_total: "0",
         costo_instalacion: "5000",
-        estado: "disponible",
+        uso_lote: "residencial",
+        estado_disponibilidad: "disponible",
       })
       loadLotes()
     } catch (err: any) {
@@ -268,23 +268,30 @@ export function Lotes() {
   }
 
   // Función para obtener el badge según el estado
-  const getEstadoBadge = (estado: string) => {
-    switch (estado) {
-      case 'disponible':
-        return <Badge variant="default" className="bg-green-500">Disponible</Badge>
-      case 'reservado':
-        return <Badge variant="default" className="bg-yellow-500">Reservado</Badge>
-      case 'pagado':
-        return <Badge variant="default" className="bg-purple-500">Pagado</Badge>
-      case 'comercial_y_bodega':
-        return <Badge variant="default" className="bg-amber-800">Comercial y Bodega</Badge>
-      case 'financiado':
-        return <Badge variant="default" className="bg-blue-500">Financiado</Badge>
-      case 'pagado_y_escriturado':
-        return <Badge variant="default" className="bg-red-500">Pagado y Escriturado</Badge>
-      default:
-        return <Badge variant="secondary">{estado}</Badge>
-    }
+  const getEstadoBadge = (lote: LoteDisplay) => {
+    return (
+      <div className="flex flex-col gap-1">
+        <Badge variant="outline" className="capitalize text-[10px]">
+          {lote.uso_lote.replace(/_/g, ' ')}
+        </Badge>
+        {(() => {
+          switch (lote.estado_disponibilidad) {
+            case 'disponible':
+              return <Badge variant="default" className="bg-green-500">Disponible</Badge>
+            case 'reservado':
+              return <Badge variant="default" className="bg-yellow-500">Reservado</Badge>
+            case 'pagado':
+              return <Badge variant="default" className="bg-purple-500">Pagado</Badge>
+            case 'financiado':
+              return <Badge variant="default" className="bg-blue-500">Financiado</Badge>
+            case 'escriturado':
+              return <Badge variant="default" className="bg-red-500">Escriturado</Badge>
+            default:
+              return <Badge variant="secondary">{lote.estado_disponibilidad}</Badge>
+          }
+        })()}
+      </div>
+    )
   }
 
   /** Colores por estado (igual que en el plano interactivo). */
@@ -300,12 +307,12 @@ export function Lotes() {
 
   const contarLotesPorEstado = () => {
     return {
-      disponibles: lotes.filter(l => l.estado === 'disponible').length,
-      pagados: lotes.filter(l => l.estado === 'pagado').length,
-      pagados_y_escriturados: lotes.filter(l => l.estado === 'pagado_y_escriturado').length,
-      reservados: lotes.filter(l => l.estado === 'reservado').length,
-      comercial_y_bodega: lotes.filter(l => l.estado === 'comercial_y_bodega').length,
-      financiados: lotes.filter(l => l.estado === 'financiado').length,
+      disponibles: lotes.filter(l => l.estado_disponibilidad === 'disponible').length,
+      pagados: lotes.filter(l => l.estado_disponibilidad === 'pagado').length,
+      pagados_y_escriturados: lotes.filter(l => l.estado_disponibilidad === 'escriturado').length,
+      reservados: lotes.filter(l => l.estado_disponibilidad === 'reservado').length,
+      comercial_y_bodega: lotes.filter(l => l.uso_lote === 'comercial_y_bodega').length,
+      financiados: lotes.filter(l => l.estado_disponibilidad === 'financiado').length,
       total: lotes.length,
     }
   }
@@ -387,7 +394,8 @@ export function Lotes() {
                       metros_cuadrados: "0",
                       valor_total: "0",
                       costo_instalacion: "5000",
-                      estado: "disponible",
+                      uso_lote: "residencial",
+                      estado_disponibilidad: "disponible",
                     })
                     setCreateIdentificadorManual(false)
                     setIsCreateLoteOpen(true)
@@ -523,7 +531,7 @@ export function Lotes() {
                           <TableCell>{lote.numero_lote}</TableCell>
                           <TableCell>{lote.metros_cuadrados.toLocaleString('es-GT')} m²</TableCell>
                           <TableCell>Q {lote.valor_total.toLocaleString('es-GT', { minimumFractionDigits: 2 })}</TableCell>
-                          <TableCell>{getEstadoBadge(lote.estado)}</TableCell>
+                          <TableCell>{getEstadoBadge(lote)}</TableCell>
                           <TableCell>
                             <div className="flex items-center gap-1">
                               <Button
@@ -546,7 +554,8 @@ export function Lotes() {
                                       metros_cuadrados: String((full as any).metros_cuadrados ?? ""),
                                       valor_total: String((full as any).valor_total ?? ""),
                                       costo_instalacion: String((full as any).costo_instalacion ?? ""),
-                                      estado: ((full as any).estado ?? "disponible") as "disponible" | "reservado" | "pagado" | "comercial_y_bodega" | "financiado" | "pagado_y_escriturado",
+                                      uso_lote: (full as any).uso_lote ?? "residencial",
+                                      estado_disponibilidad: (full as any).estado_disponibilidad ?? "disponible",
                                     })
                                     setEditIdentificadorManual(true) // By default, let's keep it manual when opening edit so it doesn't immediately overwrite the saved ID
                                   } catch {
@@ -587,6 +596,7 @@ export function Lotes() {
                       startIndex={startIndex}
                       endIndex={endIndex}
                       onPageChange={goToPage}
+                      onItemsPerPageChange={() => {}}
                     />
                   </div>
                 )}
@@ -703,26 +713,44 @@ export function Lotes() {
                 onChange={(e) => setCreateLoteForm((f) => ({ ...f, costo_instalacion: e.target.value }))}
               />
             </div>
-            <div className="space-y-2">
-              <Label>Estado</Label>
-              <Select
-                value={createLoteForm.estado}
-                onValueChange={(v) =>
-                  setCreateLoteForm((f) => ({ ...f, estado: v as typeof f.estado }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="disponible">Disponible</SelectItem>
-                  <SelectItem value="reservado">Reservado</SelectItem>
-                  <SelectItem value="pagado">Pagado</SelectItem>
-                  <SelectItem value="comercial_y_bodega">Comercial y Bodega</SelectItem>
-                  <SelectItem value="financiado">Financiado</SelectItem>
-                  <SelectItem value="pagado_y_escriturado">Pagado y Escriturado</SelectItem>
-                </SelectContent>
-              </Select>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Uso del Lote</Label>
+                <Select
+                  value={createLoteForm.uso_lote}
+                  onValueChange={(v) =>
+                    setCreateLoteForm((f) => ({ ...f, uso_lote: v as USO_LOTE }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="residencial">Residencial</SelectItem>
+                    <SelectItem value="comercial_y_bodega">Comercial y Bodega</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Estado Disponibilidad</Label>
+                <Select
+                  value={createLoteForm.estado_disponibilidad}
+                  onValueChange={(v) =>
+                    setCreateLoteForm((f) => ({ ...f, estado_disponibilidad: v as ESTADO_DISPONIBILIDAD }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="disponible">Disponible</SelectItem>
+                    <SelectItem value="reservado">Reservado</SelectItem>
+                    <SelectItem value="financiado">Financiado</SelectItem>
+                    <SelectItem value="pagado">Pagado</SelectItem>
+                    <SelectItem value="escriturado">Escriturado</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
             <DialogFooter>
               <Button
@@ -789,7 +817,8 @@ export function Lotes() {
                     metros_cuadrados: editForm.metros_cuadrados,
                     valor_total: editForm.valor_total,
                     costo_instalacion: editForm.costo_instalacion,
-                    estado: editForm.estado,
+                    uso_lote: editForm.uso_lote,
+                    estado_disponibilidad: editForm.estado_disponibilidad,
                     activo: true,
                   }
                   await lotesService.updateLote(editLoteId, payload)
@@ -884,22 +913,40 @@ export function Lotes() {
                   onChange={(e) => setEditForm((f) => ({ ...f, costo_instalacion: e.target.value }))}
                 />
               </div>
-              <div className="space-y-2">
-                <Label>Estado</Label>
-                <Select
-                  value={editForm.estado}
-                  onValueChange={(v) => setEditForm((f) => ({ ...f, estado: v as typeof f.estado }))}
-                >
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="disponible">Disponible</SelectItem>
-                    <SelectItem value="reservado">Reservado</SelectItem>
-                    <SelectItem value="pagado">Pagado</SelectItem>
-                    <SelectItem value="comercial_y_bodega">Comercial y Bodega</SelectItem>
-                    <SelectItem value="financiado">Financiado</SelectItem>
-                    <SelectItem value="pagado_y_escriturado">Pagado y Escriturado</SelectItem>
-                  </SelectContent>
-                </Select>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Uso del Lote</Label>
+                  <Select
+                    value={editForm.uso_lote}
+                    onValueChange={(v) => setEditForm((f) => ({ ...f, uso_lote: v as USO_LOTE }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="residencial">Residencial</SelectItem>
+                      <SelectItem value="comercial_y_bodega">Comercial y Bodega</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Estado Disponibilidad</Label>
+                  <Select
+                    value={editForm.estado_disponibilidad}
+                    onValueChange={(v) => setEditForm((f) => ({ ...f, estado_disponibilidad: v as ESTADO_DISPONIBILIDAD }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="disponible">Disponible</SelectItem>
+                      <SelectItem value="reservado">Reservado</SelectItem>
+                      <SelectItem value="financiado">Financiado</SelectItem>
+                      <SelectItem value="pagado">Pagado</SelectItem>
+                      <SelectItem value="escriturado">Escriturado</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
               {editError && <p className="text-sm text-destructive">{editError}</p>}
               <DialogFooter>

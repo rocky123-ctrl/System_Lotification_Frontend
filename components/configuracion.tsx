@@ -37,6 +37,7 @@ import {
   Map
 } from "lucide-react"
 import { useConfiguracion } from "@/hooks/use-configuracion"
+import { config as appConfig } from "@/lib/config"
 import { 
   configuracionGeneralService, 
   configuracionFinancieraService,
@@ -215,7 +216,7 @@ export function Configuracion() {
           <AlertDescription>
             <div className="space-y-2">
               <p><strong>Error de conexión:</strong> {error}</p>
-              <p className="text-sm">Verifica que el backend esté ejecutándose en <code>http://localhost:8000</code></p>
+              <p className="text-sm">Verifica que el backend esté ejecutándose en <code>{appConfig.api.baseUrl}</code></p>
               <Button 
                 variant="outline" 
                 size="sm" 

@@ -4,7 +4,8 @@ import type React from "react"
 import { createContext, useContext, useState, useEffect } from "react"
 import { authService, refreshTokenIfNeeded, ApiError } from "@/lib/api"
 import { config as appConfig } from "@/lib/config"
-import { useTokenRefresh } from "@/hooks/use-token-refresh"
+import { useInactivity } from "@/hooks/use-inactivity"
+import { InactivityModal } from "@/components/inactivity-modal"
 
 interface User {
   id: number
@@ -14,7 +15,7 @@ interface User {
   lastName: string
   isStaff: boolean
   isSuperuser: boolean
-  role: "admin" | "user"
+  role: string
 }
 
 interface AuthContextType {
@@ -38,8 +39,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   
-  // Hook para renovación automática de tokens
-  useTokenRefresh()
+  // Hook para seguimiento de inactividad
+  useInactivity()
 
   // Función para mapear el usuario del backend al formato local
   const mapUserFromApi = (apiUser: any): User => ({
@@ -50,7 +51,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     lastName: apiUser.last_name || "",
     isStaff: false, // Por defecto, ya que el backend no devuelve is_staff
     isSuperuser: false, // Por defecto, ya que el backend no devuelve is_superuser
-    role: "admin", // Por defecto como admin para el usuario actual
+    role: apiUser.role || "Usuario",
   })
 
   // Función para verificar y renovar tokens automáticamente
@@ -64,20 +65,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const profile = await authService.getProfile()
         const userData = mapUserFromApi(profile)
         setUser(userData)
-        localStorage.setItem('lotificacion_user', JSON.stringify(userData))
+        sessionStorage.setItem('lotificacion_user', JSON.stringify(userData))
         console.log('[AuthContext] Usuario autenticado:', userData)
       } else {
         // No hay token válido, limpiar estado
         console.log('[AuthContext] No hay token válido, limpiando estado')
         setUser(null)
-        localStorage.removeItem('lotificacion_user')
+        sessionStorage.removeItem('lotificacion_user')
       }
     } catch (error) {
       console.error('[AuthContext] Error checking auth status:', error)
       setUser(null)
-      localStorage.removeItem('lotificacion_user')
-      localStorage.removeItem(appConfig.auth.tokenKey)
-      localStorage.removeItem(appConfig.auth.refreshTokenKey)
+      sessionStorage.removeItem('lotificacion_user')
+      sessionStorage.removeItem(appConfig.auth.tokenKey)
+      sessionStorage.removeItem(appConfig.auth.refreshTokenKey)
     } finally {
       setIsLoading(false)
     }
@@ -86,6 +87,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Verificar estado de autenticación al cargar
   useEffect(() => {
     checkAuthStatus()
+
+    // Manejar cerrado de pestaña con SendBeacon para intentar matar sesión en REDIS
+    const handleBeforeUnload = () => {
+      const refreshToken = sessionStorage.getItem(appConfig.auth.refreshTokenKey)
+      if (refreshToken) {
+        // Utilizamos sendBeacon porque una llamada fech o AJAX será cancelada al cerrar la ventana
+        const data = new Blob([JSON.stringify({ refresh: refreshToken })], { type: 'application/json' })
+        navigator.sendBeacon(`${appConfig.api.baseUrl}/api/auth/logout/`, data)
+      }
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
   }, [])
 
   const login = async (username: string, password: string): Promise<{ success: boolean; error?: string }> => {
@@ -96,13 +110,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const response = await authService.login(username, password)
       
       // Guardar tokens
-      localStorage.setItem(appConfig.auth.tokenKey, response.tokens.access)
-      localStorage.setItem(appConfig.auth.refreshTokenKey, response.tokens.refresh)
+      sessionStorage.setItem(appConfig.auth.tokenKey, response.tokens.access)
+      sessionStorage.setItem(appConfig.auth.refreshTokenKey, response.tokens.refresh)
       
       // Mapear y guardar usuario
       const userData = mapUserFromApi(response.user)
       setUser(userData)
-      localStorage.setItem('lotificacion_user', JSON.stringify(userData))
+      sessionStorage.setItem('lotificacion_user', JSON.stringify(userData))
       
       console.log("[API] Login successful:", userData)
       console.log("[API] User state updated, isAuthenticated should be true")
@@ -113,7 +127,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       let errorMessage = "Error de conexión"
       if (error instanceof ApiError) {
         if (error.status === 0 || error.data?.type === 'CONNECTION_ERROR') {
-          errorMessage = error.message || "No se puede conectar al servidor. Verifica que Django esté corriendo en http://localhost:8000"
+          errorMessage = error.message || `No se puede conectar al servidor. Verifica que Django esté corriendo en ${appConfig.api.baseUrl}`
         } else if (error.status === 401) {
           errorMessage = "Credenciales incorrectas"
         } else if (error.status === 400) {
@@ -189,9 +203,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } finally {
       // Limpiar estado local independientemente del resultado del backend
       setUser(null)
-      localStorage.removeItem('lotificacion_user')
-      localStorage.removeItem(appConfig.auth.tokenKey)
-      localStorage.removeItem(appConfig.auth.refreshTokenKey)
+      sessionStorage.removeItem('lotificacion_user')
+      sessionStorage.removeItem(appConfig.auth.tokenKey)
+      sessionStorage.removeItem(appConfig.auth.refreshTokenKey)
     }
   }
 
@@ -204,7 +218,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     isAuthenticated: !!user,
   }
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+      <InactivityModal />
+    </AuthContext.Provider>
+  )
 }
 
 export function useAuth() {

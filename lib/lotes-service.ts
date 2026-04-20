@@ -1,7 +1,8 @@
 import { apiRequest } from './api'
 
 // Interfaces para los lotes
-export type LoteEstado = 'disponible' | 'reservado' | 'pagado' | 'comercial_y_bodega' | 'financiado' | 'pagado_y_escriturado'
+export type USO_LOTE = 'residencial' | 'comercial_y_bodega'
+export type ESTADO_DISPONIBILIDAD = 'disponible' | 'reservado' | 'financiado' | 'pagado' | 'escriturado'
 
 export interface Lote {
   id: number
@@ -11,12 +12,19 @@ export interface Lote {
   valor_total: string
   saldo_financiar?: string
   costo_instalacion: string
-  estado: LoteEstado
+  uso_lote: USO_LOTE
+  estado_disponibilidad: ESTADO_DISPONIBILIDAD
+  identificador?: string
+  plano_svg_id?: string
+  lotificacion_id?: number
   version?: number
   created_at?: string
   updated_at?: string
   manzana_nombre?: string
   lotificacion_nombre?: string
+  enganche?: string
+  plazo_meses?: number
+  cuota_mensual?: string
 }
 
 export interface LoteCreate {
@@ -26,7 +34,8 @@ export interface LoteCreate {
   metros_cuadrados: string
   valor_total: string
   costo_instalacion: string
-  estado: LoteEstado
+  uso_lote: USO_LOTE
+  estado_disponibilidad: ESTADO_DISPONIBILIDAD
 }
 
 export interface LoteUpdate {
@@ -37,14 +46,16 @@ export interface LoteUpdate {
   metros_cuadrados?: string
   valor_total?: string
   costo_instalacion?: string
-  estado?: LoteEstado
+  uso_lote?: USO_LOTE
+  estado_disponibilidad?: ESTADO_DISPONIBILIDAD
   activo?: boolean
 }
 
 export interface LotesFilters {
   lotificacion?: number
   manzana?: string
-  estado?: LoteEstado
+  uso_lote?: USO_LOTE
+  estado_disponibilidad?: ESTADO_DISPONIBILIDAD
   precio_min?: number
   precio_max?: number
   metros_min?: number
@@ -68,33 +79,38 @@ export interface LotesEstadisticas {
 // Servicio de lotes
 export const lotesService = {
   // Obtener todos los lotes con filtros opcionales
-  async getLotes(filters?: LotesFilters): Promise<Lote[]> {
+  async getLotes(filters?: LotesFilters & { page?: number }): Promise<{ results: Lote[], count: number }> {
     const params = new URLSearchParams()
     
     if (filters) {
       if (filters.lotificacion) params.append('lotificacion', filters.lotificacion.toString())
       if (filters.manzana) params.append('manzana', filters.manzana)
-      if (filters.estado) params.append('estado', filters.estado)
+      if (filters.uso_lote) params.append('uso_lote', filters.uso_lote)
+      if (filters.estado_disponibilidad) params.append('estado_disponibilidad', filters.estado_disponibilidad)
       if (filters.precio_min) params.append('precio_min', filters.precio_min.toString())
       if (filters.precio_max) params.append('precio_max', filters.precio_max.toString())
       if (filters.metros_min) params.append('metros_min', filters.metros_min.toString())
       if (filters.metros_max) params.append('metros_max', filters.metros_max.toString())
       if (filters.solo_disponibles) params.append('solo_disponibles', 'true')
+      if (filters.page) params.append('page', filters.page.toString())
     }
 
     const queryString = params.toString()
     const endpoint = queryString ? `/lotes/lotes/?${queryString}` : '/lotes/lotes/'
     
     const response = await apiRequest<any>(endpoint)
-    // Manejar respuesta paginada o array directo
+    
+    // Si es un array directo (sin paginación en el backend)
     if (Array.isArray(response)) {
-      return response
+      return { results: response, count: response.length }
     }
-    // Si viene paginado, extraer results
+    
+    // Si viene paginado
     if (response && response.results && Array.isArray(response.results)) {
-      return response.results
+      return { results: response.results, count: response.count || response.results.length }
     }
-    return []
+    
+    return { results: [], count: 0 }
   },
 
   // Obtener un lote específico por ID
@@ -210,12 +226,16 @@ export const mapLoteFromApi = (apiLote: Lote) => {
     lote: apiLote.numero_lote,
     metrosCuadrados: parseFloat(apiLote.metros_cuadrados),
     valorTotal: parseFloat(apiLote.valor_total),
-    enganche: parseFloat(apiLote.enganche),
+    enganche: parseFloat(apiLote.enganche || '0'),
     instalacion: parseFloat(apiLote.costo_instalacion),
-    saldoFinanciar: parseFloat(apiLote.saldo_financiar),
-    plazoMeses: apiLote.plazo_meses,
-    cuotaMensual: parseFloat(apiLote.cuota_mensual),
-    estado: apiLote.estado
+    saldoFinanciar: parseFloat(apiLote.saldo_financiar || '0'),
+    plazoMeses: apiLote.plazo_meses || 0,
+    cuotaMensual: parseFloat(apiLote.cuota_mensual || '0'),
+    uso_lote: apiLote.uso_lote,
+    estado_disponibilidad: apiLote.estado_disponibilidad,
+    identificador: apiLote.identificador,
+    plano_svg_id: apiLote.plano_svg_id,
+    lotificacion_id: apiLote.lotificacion_id
   }
 }
 
@@ -236,10 +256,8 @@ export const mapLoteToApi = (frontendLote: any): LoteCreate => {
     numero_lote: frontendLote.lote,
     metros_cuadrados: frontendLote.metrosCuadrados.toString(),
     valor_total: frontendLote.valorTotal.toString(),
-    enganche: frontendLote.enganche.toString(),
     costo_instalacion: frontendLote.instalacion.toString(),
-    plazo_meses: frontendLote.plazoMeses,
-    cuota_mensual: frontendLote.cuotaMensual.toString(),
-    estado: 'disponible'
+    uso_lote: 'residencial',
+    estado_disponibilidad: 'disponible'
   }
 }

@@ -1,14 +1,12 @@
-"use client"
-
 import { DashboardLayout } from "@/components/dashboard-layout"
-import { AdminDashboard } from "@/components/admin-dashboard"
+import { CotizacionForm } from "@/components/cotizacion-form"
 import ProtectedRoute from "@/components/protected-route"
 
-export default function HomePage() {
+export default function EditarCotizacionPage({ params }: { params: { cotizacionId: string } }) {
   return (
     <ProtectedRoute>
       <DashboardLayout>
-        <AdminDashboard />
+        <CotizacionForm cotizacionId={params.cotizacionId} />
       </DashboardLayout>
     </ProtectedRoute>
   )

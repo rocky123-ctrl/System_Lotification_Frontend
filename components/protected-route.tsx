@@ -45,7 +45,11 @@ export default function ProtectedRoute({ children, requiredRole }: ProtectedRout
     )
   }
 
-  if (requiredRole && user && user.role !== requiredRole && user.role !== "admin") {
+  const userRole = user?.role?.toLowerCase() || ""
+  const isAdmin = userRole === "admin" || userRole === "administrador" || userRole === "superadmin"
+  const hasRequiredRole = !requiredRole || userRole === requiredRole.toLowerCase()
+
+  if (requiredRole && user && !hasRequiredRole && !isAdmin) {
     console.log("[API] Insufficient permissions")
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">

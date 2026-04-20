@@ -44,6 +44,7 @@ import {
   type LotificacionCreate,
   type LotificacionUpdate
 } from "@/lib/lotificacion-service"
+import { config as appConfig } from "@/lib/config"
 import { SVGUploader } from "@/components/svg-uploader"
 
 export function Lotificaciones() {
@@ -104,7 +105,7 @@ export function Lotificaciones() {
       let errorMessage = 'Error al cargar las lotificaciones'
       
       if (err.message?.includes('fetch') || err.message?.includes('Failed to fetch')) {
-        errorMessage = 'No se puede conectar con el servidor. Verifica que el backend esté ejecutándose en http://localhost:8000'
+        errorMessage = `No se puede conectar con el servidor. Verifica que el backend esté ejecutándose en ${appConfig.api.baseUrl}`
       } else if (err.status === 403) {
         errorMessage = 'No tienes permisos para acceder a las lotificaciones.'
       } else if (err.status === 401) {
@@ -398,7 +399,7 @@ export function Lotificaciones() {
           <AlertDescription>
             <div className="space-y-2">
               <p><strong>Error de conexión:</strong> {error}</p>
-              <p className="text-sm">Verifica que el backend esté ejecutándose en <code>http://localhost:8000</code></p>
+              <p className="text-sm">Verifica que el backend esté ejecutándose en <code>{appConfig.api.baseUrl}</code></p>
               <Button 
                 variant="outline" 
                 size="sm" 

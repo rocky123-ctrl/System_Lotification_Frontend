@@ -3,7 +3,7 @@
 import type React from "react"
 
 import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -19,6 +19,8 @@ export default function LoginForm() {
   const [isLoading, setIsLoading] = useState(false)
   const { login, isAuthenticated } = useAuth()
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const reason = searchParams.get('reason')
 
   // Redirigir si ya está autenticado
   useEffect(() => {
@@ -105,6 +107,14 @@ export default function LoginForm() {
             {error && (
               <Alert className="border-red-200 bg-red-50">
                 <AlertDescription className="text-red-700">{error}</AlertDescription>
+              </Alert>
+            )}
+
+            {reason === 'inactivity' && !error && (
+              <Alert className="border-yellow-200 bg-yellow-50">
+                <AlertDescription className="text-yellow-800">
+                  Su sesión ha expirado por inactividad. Por favor, vuelva a iniciar sesión.
+                </AlertDescription>
               </Alert>
             )}
 

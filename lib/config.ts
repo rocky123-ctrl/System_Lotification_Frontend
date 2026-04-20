@@ -8,7 +8,7 @@ export const config = {
 
   // Configuración del backend
   api: {
-    baseUrl: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000',
+    baseUrl: process.env.NEXT_PUBLIC_API_URL,
   },
 
   // Configuración de autenticación

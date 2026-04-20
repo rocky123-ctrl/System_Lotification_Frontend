@@ -1,259 +1,403 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import ProtectedRoute from "@/components/protected-route"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Download, Users, Wallet, Percent, CheckCircle2 } from "lucide-react"
-import * as XLSX from "xlsx"
+import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { TablePagination } from "@/components/ui/table-pagination"
+import { Download, Wallet, CreditCard, Search, Loader2, Calendar, CheckCircle2, AlertCircle } from "lucide-react"
+import { planillasService, type LiquidacionComision } from "@/lib/planillas-service"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+import { toast } from "sonner"
 
 export default function PlanillasPage() {
-  // Mock Data for Vendedores
-  const vendedoresData = [
-    { id: 1, nombre: "Carlos Méndez", ventasTotales: 150000, comisionPorcentaje: 5, estado: "pendiente" },
-    { id: 2, nombre: "Lucía Hernández", ventasTotales: 220000, comisionPorcentaje: 5, estado: "pagado" },
-    { id: 3, nombre: "Roberto Gómez", ventasTotales: 80000, comisionPorcentaje: 5, estado: "pendiente" },
-  ]
+  // State for data
+  const [liquidaciones, setLiquidaciones] = useState<LiquidacionComision[]>([])
+  const [loading, setLoading] = useState(true)
+  const [totalItems, setTotalItems] = useState(0)
+  
+  // State for filters
+  const [search, setSearch] = useState("")
+  const [debouncedSearch, setDebouncedSearch] = useState("")
+  const [mes, setMes] = useState<string>("all")
+  const [anio, setAnio] = useState<string>(new Date().getFullYear().toString())
+  const [estado, setEstado] = useState<'all' | 'PENDIENTE' | 'PAGADO'>('all')
+  const [page, setPage] = useState(1)
+  const ITEMS_PER_PAGE = 10
 
-  // Mock Data for Administradores
-  const administradoresData = [
-    { id: 101, nombre: "Ana López", cargo: "Gerente de Ventas", sueldoBase: 12000, deducciones: 579.60, estado: "pagado" },
-    { id: 102, nombre: "Martín Fuentes", cargo: "Contador", sueldoBase: 8000, deducciones: 386.40, estado: "pendiente" },
-    { id: 103, nombre: "Elena Castro", cargo: "Recepcionista", sueldoBase: 4000, deducciones: 193.20, estado: "pendiente" },
-  ]
+  // State for Payment Modal
+  const [showPaymentModal, setShowPaymentModal] = useState(false)
+  const [selectedLiquidation, setSelectedLiquidation] = useState<LiquidacionComision | null>(null)
+  const [referenciaPago, setReferenciaPago] = useState("")
+  const [paying, setPaying] = useState(false)
 
-  const calcularComision = (ventas: number, porcentaje: number) => {
-    return (ventas * porcentaje) / 100
+  // Debouncing effect for search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search)
+      setPage(1) // Reset to page 1 on search
+    }, 500)
+    return () => clearTimeout(timer)
+  }, [search])
+
+  const fetchLiquidaciones = useCallback(async () => {
+    setLoading(true)
+    try {
+      const response = await planillasService.getLiquidaciones({
+        anio,
+        mes,
+        search: debouncedSearch,
+        estado: estado === 'all' ? undefined : estado,
+        page
+      })
+      setLiquidaciones(response.results)
+      setTotalItems(response.count)
+    } catch (err) {
+      console.error("Error fetching liquidations:", err)
+      toast.error("No se pudieron cargar las liquidaciones")
+    } finally {
+      setLoading(false)
+    }
+  }, [anio, mes, debouncedSearch, estado, page])
+
+  useEffect(() => {
+    fetchLiquidaciones()
+  }, [fetchLiquidaciones])
+
+  const handlePagarAhora = async () => {
+    if (!selectedLiquidation) return
+    setPaying(true)
+    try {
+      await planillasService.pagarLiquidacion(selectedLiquidation.id, referenciaPago)
+      toast.success("Pago registrado exitosamente")
+      setShowPaymentModal(false)
+      setReferenciaPago("")
+      fetchLiquidaciones()
+    } catch (err) {
+      console.error("Error paying:", err)
+      toast.error("Error al registrar el pago")
+    } finally {
+      setPaying(false)
+    }
   }
 
-  const formatCurrency = (amount: number) => {
+  const handleExportExcel = async () => {
+    try {
+      const blob = await planillasService.exportarExcel({
+        anio,
+        mes,
+        search: debouncedSearch,
+        estado: estado === 'all' ? undefined : estado
+      })
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `Planilla_${mes}_${anio}.xlsx`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+    } catch (err) {
+      console.error("Error exporting:", err)
+      toast.error("Error al generar el archivo Excel")
+    }
+  }
+
+  const formatCurrency = (amount: string | number) => {
+    const value = typeof amount === 'string' ? parseFloat(amount) : amount
     return new Intl.NumberFormat('es-GT', {
       style: 'currency',
       currency: 'GTQ',
       minimumFractionDigits: 2
-    }).format(amount)
+    }).format(value)
   }
 
-  const getStatusBadge = (estado: string) => {
-    if (estado === "pagado") {
-      return <Badge className="bg-green-100 text-green-800 hover:bg-green-100 border-none">Pagado</Badge>
-    }
-    return <Badge variant="outline" className="text-amber-600 border-amber-300 bg-amber-50">Pendiente</Badge>
+  const formatDate = (s: string) => {
+    if (!s) return "—"
+    return new Date(s).toLocaleDateString("es-GT", { dateStyle: "short" })
   }
 
-  const handleExportExcel = () => {
-    // Worksheet for Administrators
-    const adminWS = XLSX.utils.json_to_sheet(administradoresData.map(emp => ({
-      "ID": emp.id,
-      "Nombre": emp.nombre,
-      "Cargo": emp.cargo,
-      "Sueldo Base (Q)": emp.sueldoBase,
-      "Deducciones (Q)": emp.deducciones,
-      "Sueldo Neto (Q)": emp.sueldoBase - emp.deducciones,
-      "Estado": emp.estado.toUpperCase()
-    })));
-
-    // Styles/column widths for admin worksheet
-    adminWS['!cols'] = [
-      { wch: 5 }, { wch: 20 }, { wch: 20 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 10 }
-    ];
-
-    // Worksheet for Sellers
-    const sellerWS = XLSX.utils.json_to_sheet(vendedoresData.map(emp => ({
-      "ID": emp.id,
-      "Nombre": emp.nombre,
-      "Ventas Totales (Q)": emp.ventasTotales,
-      "Comisión (%)": emp.comisionPorcentaje,
-      "Monto Comisión (Q)": calcularComision(emp.ventasTotales, emp.comisionPorcentaje),
-      "Estado": emp.estado.toUpperCase()
-    })));
-
-    // Styles/column widths for seller worksheet
-    sellerWS['!cols'] = [
-      { wch: 5 }, { wch: 20 }, { wch: 18 }, { wch: 12 }, { wch: 18 }, { wch: 10 }
-    ];
-
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, sellerWS, "Planilla Vendedores");
-    XLSX.utils.book_append_sheet(wb, adminWS, "Planilla Administradores");
-
-    const dateStr = new Date().toISOString().split('T')[0];
-    XLSX.writeFile(wb, `Planilla_General_${dateStr}.xlsx`);
-  }
-
-  const totalComisiones = vendedoresData.reduce((acc, curr) => acc + calcularComision(curr.ventasTotales, curr.comisionPorcentaje), 0)
-  const totalSueldos = administradoresData.reduce((acc, curr) => acc + (curr.sueldoBase - curr.deducciones), 0)
-  const totalNomina = totalComisiones + totalSueldos
+  const totalComisiones = liquidaciones.reduce((acc, curr) => acc + parseFloat(curr.monto_pagado), 0)
 
   return (
     <ProtectedRoute requiredRole="admin">
       <DashboardLayout>
         <div className="space-y-6 animate-in fade-in duration-500">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <div>
-              <h1 className="text-3xl font-bold tracking-tight">Planillas de Pago</h1>
-              <p className="text-muted-foreground mt-2">Gestiona el pago de sueldos para administradores y comisiones para vendedores.</p>
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b pb-6">
+            <div className="space-y-1">
+              <h1 className="text-3xl font-bold tracking-tight">Gestión de Planilla</h1>
+              <p className="text-muted-foreground">Control y liquidación de comisiones a vendedores para el periodo seleccionado.</p>
             </div>
-            <Button onClick={handleExportExcel} className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white transition-colors">
+            <Button 
+              onClick={handleExportExcel} 
+              className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg"
+            >
               <Download className="h-4 w-4" />
-              Exportar a Excel
+              Generar Excel de Periodo
             </Button>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-4 lg:grid-cols-4">
             <Card className="border-l-4 border-l-blue-500 shadow-sm">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total Nómina (Mes actual)</CardTitle>
-                <div className="bg-blue-100 p-2 rounded-full">
-                  <Wallet className="h-4 w-4 text-blue-600" />
-                </div>
+                <CardTitle className="text-sm font-medium">Búsqueda</CardTitle>
+                <Search className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{formatCurrency(totalNomina)}</div>
-                <p className="text-xs text-muted-foreground mt-1">Sueldos y comisiones combinados</p>
+                <Input 
+                  placeholder="Nombre del vendedor..." 
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="h-9"
+                />
               </CardContent>
             </Card>
             <Card className="border-l-4 border-l-purple-500 shadow-sm">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Pago Administradores</CardTitle>
-                <div className="bg-purple-100 p-2 rounded-full">
-                  <Users className="h-4 w-4 text-purple-600" />
-                </div>
+                <CardTitle className="text-sm font-medium">Mes / Periodo</CardTitle>
+                <Calendar className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{formatCurrency(totalSueldos)}</div>
-                <p className="text-xs text-muted-foreground mt-1">Sueldos netos a pagar</p>
+                <Select value={mes} onValueChange={setMes}>
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="Mes" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos los Meses</SelectItem>
+                    <SelectItem value="1">Enero</SelectItem>
+                    <SelectItem value="2">Febrero</SelectItem>
+                    <SelectItem value="3">Marzo</SelectItem>
+                    <SelectItem value="4">Abril</SelectItem>
+                    <SelectItem value="5">Mayo</SelectItem>
+                    <SelectItem value="6">Junio</SelectItem>
+                    <SelectItem value="7">Julio</SelectItem>
+                    <SelectItem value="8">Agosto</SelectItem>
+                    <SelectItem value="9">Septiembre</SelectItem>
+                    <SelectItem value="10">Octubre</SelectItem>
+                    <SelectItem value="11">Noviembre</SelectItem>
+                    <SelectItem value="12">Diciembre</SelectItem>
+                  </SelectContent>
+                </Select>
               </CardContent>
             </Card>
             <Card className="border-l-4 border-l-orange-500 shadow-sm">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Pago Vendedores</CardTitle>
-                <div className="bg-orange-100 p-2 rounded-full">
-                  <Percent className="h-4 w-4 text-orange-600" />
-                </div>
+                <CardTitle className="text-sm font-medium">Año</CardTitle>
+                <Calendar className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{formatCurrency(totalComisiones)}</div>
-                <p className="text-xs text-muted-foreground mt-1">Total de comisiones generadas</p>
+                <Select value={anio} onValueChange={setAnio}>
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="Año" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="2024">2024</SelectItem>
+                    <SelectItem value="2025">2025</SelectItem>
+                    <SelectItem value="2026">2026</SelectItem>
+                  </SelectContent>
+                </Select>
+              </CardContent>
+            </Card>
+            <Card className="border-l-4 border-l-emerald-500 shadow-sm bg-emerald-50/10">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Comisiones en Pantalla</CardTitle>
+                <Wallet className="h-4 w-4 text-emerald-600" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-xl font-bold text-emerald-700">{formatCurrency(totalComisiones)}</div>
+                <p className="text-[10px] text-muted-foreground mt-1">Suma del listado actual</p>
               </CardContent>
             </Card>
           </div>
 
-          <Tabs defaultValue="vendedores" className="w-full">
-            <TabsList className="mb-4 grid w-full max-w-md grid-cols-2">
-              <TabsTrigger value="vendedores">Vendedores (Comisiones)</TabsTrigger>
-              <TabsTrigger value="administradores">Administradores (Sueldos)</TabsTrigger>
-            </TabsList>
-            
-            <TabsContent value="vendedores" className="space-y-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Planilla de Vendedores</CardTitle>
-                  <CardDescription>
-                    Detalle de ventas computadas y comisiones a pagar asociadas a los vendedores.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="rounded-md border">
-                    <Table>
-                      <TableHeader className="bg-muted/30">
-                        <TableRow>
-                          <TableHead>Nombre</TableHead>
-                          <TableHead>Ventas Totales</TableHead>
-                          <TableHead>Comisión (%)</TableHead>
-                          <TableHead>Monto a Pagar</TableHead>
-                          <TableHead>Estado</TableHead>
-                          <TableHead className="text-right">Acción</TableHead>
+          <Card className="shadow-md">
+            <CardHeader className="bg-muted/20 border-b">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Liquidaciones Pendientes y Pagadas</CardTitle>
+                  <CardDescription>Detalle de comisiones generadas por venta de lotes.</CardDescription>
+                </div>
+                <div className="flex items-center gap-2">
+                   <Label className="text-xs">Estado:</Label>
+                   <Select value={estado} onValueChange={(v: any) => setEstado(v)}>
+                    <SelectTrigger className="w-[150px] h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos</SelectItem>
+                      <SelectItem value="PENDIENTE">Sólo Pendientes</SelectItem>
+                      <SelectItem value="PAGADO">Sólo Pagados</SelectItem>
+                    </SelectContent>
+                   </Select>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="relative overflow-x-auto">
+                <Table>
+                  <TableHeader className="bg-muted/30">
+                    <TableRow>
+                      <TableHead className="font-bold">Vendedor</TableHead>
+                      <TableHead className="font-bold">Venta / Lote</TableHead>
+                      <TableHead className="font-bold">Comisión</TableHead>
+                      <TableHead className="font-bold">Fecha Venta</TableHead>
+                      <TableHead className="font-bold">Estado</TableHead>
+                      <TableHead className="text-right font-bold h-[50px] pr-8">Acciones</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {loading ? (
+                      <TableRow>
+                        <TableCell colSpan={6} className="h-32 text-center">
+                          <div className="flex flex-col items-center gap-2">
+                            <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                            <span className="text-sm text-muted-foreground">Sincronizando planilla...</span>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ) : liquidaciones.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={6} className="h-32 text-center">
+                          <div className="flex flex-col items-center gap-2">
+                            <AlertCircle className="h-6 w-6 text-muted-foreground" />
+                            <span className="text-sm text-muted-foreground">No se encontraron liquidaciones para este periodo.</span>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      liquidaciones.map((liq) => (
+                        <TableRow key={liq.id} className="hover:bg-muted/50 transition-colors">
+                          <TableCell className="py-4">
+                            <span className="font-semibold text-slate-900">{liq.vendedor_nombre}</span>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex flex-col">
+                              <span className="text-sm font-medium">Lote: {liq.lote_numero}</span>
+                              <span className="text-[10px] text-muted-foreground uppercase">Ticket: V-{liq.venta}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <span className="font-bold text-orange-600">{formatCurrency(liq.monto_pagado)}</span>
+                          </TableCell>
+                          <TableCell>{formatDate(liq.fecha_venta)}</TableCell>
+                          <TableCell>
+                            {liq.estado_pago === 'PAGADO' ? (
+                              <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 border-none px-3 font-semibold">
+                                Pagado
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-slate-500 border-slate-300 bg-slate-50 px-3">
+                                Pendiente
+                              </Badge>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right pr-6">
+                            {liq.estado_pago === 'PENDIENTE' ? (
+                              <Button 
+                                size="sm" 
+                                variant="outline" 
+                                className="border-primary/30 hover:bg-primary/5 text-primary font-bold h-8"
+                                onClick={() => {
+                                  setSelectedLiquidation(liq)
+                                  setShowPaymentModal(true)
+                                }}
+                              >
+                                <CreditCard className="h-3 w-3 mr-1.5" />
+                                Pagar Ahora
+                              </Button>
+                            ) : (
+                              <div className="flex flex-col items-end text-[10px] text-muted-foreground">
+                                <span className="flex items-center gap-1 text-emerald-600 font-bold">
+                                  <CheckCircle2 className="h-3 w-3" /> Pagado: {formatDate(liq.fecha_pago || "")}
+                                </span>
+                                {liq.referencia_pago && <span className="italic">Ref: {liq.referencia_pago}</span>}
+                              </div>
+                            )}
+                          </TableCell>
                         </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {vendedoresData.map((emp) => (
-                          <TableRow key={emp.id} className="hover:bg-muted/50 transition-colors">
-                            <TableCell className="font-medium">{emp.nombre}</TableCell>
-                            <TableCell>{formatCurrency(emp.ventasTotales)}</TableCell>
-                            <TableCell>{emp.comisionPorcentaje}%</TableCell>
-                            <TableCell className="font-bold text-orange-600">
-                              {formatCurrency(calcularComision(emp.ventasTotales, emp.comisionPorcentaje))}
-                            </TableCell>
-                            <TableCell>{getStatusBadge(emp.estado)}</TableCell>
-                            <TableCell className="text-right">
-                              {emp.estado === 'pendiente' ? (
-                                <Button size="sm" variant="outline" className="border-green-200 hover:bg-green-50 text-green-700">
-                                  <CheckCircle2 className="h-4 w-4 mr-1" /> Marcar Pagado
-                                </Button>
-                              ) : (
-                                <Button size="sm" variant="ghost" disabled className="text-muted-foreground">
-                                  Pagado
-                                </Button>
-                              )}
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="administradores" className="space-y-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Planilla de Administradores</CardTitle>
-                  <CardDescription>
-                    Detalle de sueldos fijos mensuales y deducciones de ley requeridas para administradores.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="rounded-md border">
-                    <Table>
-                      <TableHeader className="bg-muted/30">
-                        <TableRow>
-                          <TableHead>Nombre</TableHead>
-                          <TableHead>Cargo</TableHead>
-                          <TableHead>Sueldo Base</TableHead>
-                          <TableHead>Deducciones</TableHead>
-                          <TableHead>Sueldo Neto</TableHead>
-                          <TableHead>Estado</TableHead>
-                          <TableHead className="text-right">Acción</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {administradoresData.map((emp) => (
-                          <TableRow key={emp.id} className="hover:bg-muted/50 transition-colors">
-                            <TableCell className="font-medium">{emp.nombre}</TableCell>
-                            <TableCell className="text-muted-foreground">{emp.cargo}</TableCell>
-                            <TableCell>{formatCurrency(emp.sueldoBase)}</TableCell>
-                            <TableCell className="text-red-500">-{formatCurrency(emp.deducciones)}</TableCell>
-                            <TableCell className="font-bold text-purple-600">
-                              {formatCurrency(emp.sueldoBase - emp.deducciones)}
-                            </TableCell>
-                            <TableCell>{getStatusBadge(emp.estado)}</TableCell>
-                            <TableCell className="text-right">
-                              {emp.estado === 'pendiente' ? (
-                                <Button size="sm" variant="outline" className="border-green-200 hover:bg-green-50 text-green-700">
-                                  <CheckCircle2 className="h-4 w-4 mr-1" /> Marcar Pagado
-                                </Button>
-                              ) : (
-                                <Button size="sm" variant="ghost" disabled className="text-muted-foreground">
-                                  Pagado
-                                </Button>
-                              )}
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
-          </Tabs>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+              
+              {!loading && totalItems > 0 && (
+                <div className="p-4 border-t">
+                  <TablePagination 
+                    currentPage={page}
+                    totalPages={Math.ceil(totalItems / ITEMS_PER_PAGE)}
+                    itemsPerPage={ITEMS_PER_PAGE}
+                    totalItems={totalItems}
+                    startIndex={(page - 1) * ITEMS_PER_PAGE + 1}
+                    endIndex={Math.min(page * ITEMS_PER_PAGE, totalItems)}
+                    onPageChange={setPage}
+                    onItemsPerPageChange={() => {}}
+                  />
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
+
+        {/* Modal Pago de Liquidación */}
+        <Dialog open={showPaymentModal} onOpenChange={setShowPaymentModal}>
+          <DialogContent className="sm:max-w-[425px]">
+            <DialogHeader>
+              <DialogTitle className="text-2xl font-bold flex items-center gap-2">
+                <CreditCard className="h-6 w-6 text-primary" />
+                Registrar Liquidación
+              </DialogTitle>
+              <DialogDescription className="text-base pt-2">
+                Está registrando el pago de la comisión por el valor de{" "}
+                <span className="font-bold text-orange-600">{formatCurrency(selectedLiquidation?.monto_pagado || 0)}</span> para{" "}
+                <span className="font-bold text-slate-900">{selectedLiquidation?.vendedor_nombre}</span>.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4 mt-2">
+              <div className="grid gap-2">
+                <Label htmlFor="referencia" className="font-bold">Referencia de Pago / Comprobante</Label>
+                <Input
+                  id="referencia"
+                  placeholder="Ej. Cheque #123, Transf. Bac..."
+                  value={referenciaPago}
+                  onChange={(e) => setReferenciaPago(e.target.value)}
+                  className="h-11 border-slate-300 focus-visible:ring-primary/20"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Al confirmar, la liquidación pasará a estado <strong>PAGADO</strong> con fecha de hoy.
+                </p>
+              </div>
+            </div>
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button 
+                variant="ghost" 
+                onClick={() => setShowPaymentModal(false)}
+                disabled={paying}
+              >
+                Cancelar
+              </Button>
+              <Button 
+                onClick={handlePagarAhora} 
+                disabled={paying}
+                className="bg-primary hover:bg-primary/90 font-bold px-8 shadow-md"
+              >
+                {paying ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Procesando...
+                  </>
+                ) : (
+                  "Confirmar Pago"
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </DashboardLayout>
     </ProtectedRoute>
   )

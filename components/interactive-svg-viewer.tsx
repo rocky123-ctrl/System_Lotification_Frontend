@@ -34,7 +34,8 @@ interface LoteInfo {
   manzana: string
   manzanaId: number
   numero: string
-  estado: 'disponible' | 'reservado' | 'vendido' | 'en_proceso' | 'cancelado'
+  uso_lote: string
+  estado_disponibilidad: string
   precio?: number
   area?: number
   element?: SVGElement
@@ -51,19 +52,19 @@ interface TooltipState {
 }
 
 const ESTADO_COLORS: Record<string, string> = {
-  disponible: '#10b981', // green-500
-  reservado: '#f59e0b', // amber-500
-  vendido: '#ef4444', // red-500
-  en_proceso: '#3b82f6', // blue-500
-  cancelado: '#6b7280', // gray-500
+  disponible: "#22c55e",           // Verde
+  reservado: "#eab308",           // Amarillo
+  pagado: "#8b5cf6",              // Morado
+  financiado: "#3b82f6",          // Azul
+  escriturado: "#ef4444",         // Rojo
 }
 
 const ESTADO_LABELS: Record<string, string> = {
-  disponible: 'DISPONIBLE',
-  reservado: 'RESERVADO',
-  vendido: 'VENDIDO',
-  en_proceso: 'EN PROCESO',
-  cancelado: 'CANCELADO',
+  disponible: "Disponible",
+  reservado: "Reservado",
+  pagado: "Pagado",
+  financiado: "Financiado",
+  escriturado: "Escriturado",
 }
 
 export function InteractiveSVGViewer({
@@ -183,7 +184,8 @@ export function InteractiveSVGViewer({
             manzana: lote.manzana_nombre || `Manzana ${lote.manzana}`,
             manzanaId: lote.manzana,
             numero: lote.numero_lote,
-            estado: lote.estado,
+            uso_lote: lote.uso_lote,
+            estado_disponibilidad: lote.estado_disponibilidad,
             precio: parseFloat(lote.valor_total),
             area: parseFloat(lote.metros_cuadrados),
           })
@@ -256,11 +258,11 @@ export function InteractiveSVGViewer({
 
   // Aplicar estilos usando clases CSS y atributos
   const applyLoteStyles = (element: SVGElement, loteInfo: LoteInfo) => {
-    const color = ESTADO_COLORS[loteInfo.estado] || ESTADO_COLORS.disponible
+    const color = ESTADO_COLORS[loteInfo.estado_disponibilidad] || ESTADO_COLORS.disponible
     
     // Usar clases CSS
     element.classList.add('lote-interactivo')
-    element.classList.add(`lote-${loteInfo.estado}`)
+    element.classList.add(`lote-${loteInfo.estado_disponibilidad}`)
     
     // Aplicar atributos de estilo
     element.setAttribute('fill', color)
@@ -271,7 +273,7 @@ export function InteractiveSVGViewer({
     
     // Data attributes para lookup
     element.setAttribute('data-lote-id', loteInfo.id)
-    element.setAttribute('data-estado', loteInfo.estado)
+    element.setAttribute('data-estado', loteInfo.estado_disponibilidad)
     element.setAttribute('data-manzana-id', String(loteInfo.manzanaId))
     
     // Cursor pointer
@@ -370,14 +372,14 @@ export function InteractiveSVGViewer({
         y: e.clientY,
         content: {
           id: loteId,
-          estado: ESTADO_LABELS[loteInfo.estado] || loteInfo.estado.toUpperCase(),
+          estado: ESTADO_LABELS[loteInfo.estado_disponibilidad] || loteInfo.estado_disponibilidad.toUpperCase(),
         },
       })
     } else if (e.type === 'mouseleave' || e.type === 'mouseout') {
       if (!loteInfo) return
       setHoveredLoteId(null)
       target.classList.remove('is-hover')
-      const color = ESTADO_COLORS[loteInfo.estado] || ESTADO_COLORS.disponible
+      const color = ESTADO_COLORS[loteInfo.estado_disponibilidad] || ESTADO_COLORS.disponible
       target.setAttribute('stroke-width', '2')
       target.setAttribute('stroke', color)
       setTooltip({ visible: false, x: 0, y: 0, content: null })

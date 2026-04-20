@@ -23,6 +23,7 @@ import { TablePagination } from "@/components/ui/table-pagination"
 import { Plus, Search, Filter, Download, Edit, Trash2, Calculator, Eye, Loader2 } from "lucide-react"
 import { usePagination } from "@/hooks/use-pagination"
 import { lotesService, mapLoteFromApi, mapLoteToApi, type Lote } from "@/lib/lotes-service"
+import { config as appConfig } from "@/lib/config"
 import { BackendStatus } from "@/components/backend-status"
 
 interface LoteDisponible {
@@ -87,7 +88,7 @@ export function LotesDisponibles() {
         } else if (err.status === 500) {
           errorMessage += 'Error del servidor. Verifica que el backend esté funcionando.'
         } else if (err.message?.includes('fetch')) {
-          errorMessage += 'No se puede conectar al backend. Verifica que esté corriendo en http://localhost:8000'
+          errorMessage += `No se puede conectar al backend. Verifica que esté corriendo en ${appConfig.api.baseUrl}`
         } else {
           errorMessage += err.message || 'Error desconocido.'
         }

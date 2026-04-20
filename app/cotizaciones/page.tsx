@@ -1,14 +1,12 @@
-"use client"
-
 import { DashboardLayout } from "@/components/dashboard-layout"
-import { AdminDashboard } from "@/components/admin-dashboard"
+import { Cotizaciones } from "@/components/cotizaciones"
 import ProtectedRoute from "@/components/protected-route"
 
-export default function HomePage() {
+export default function CotizacionesPage() {
   return (
     <ProtectedRoute>
       <DashboardLayout>
-        <AdminDashboard />
+        <Cotizaciones />
       </DashboardLayout>
     </ProtectedRoute>
   )
