@@ -57,14 +57,17 @@ export interface Cotizacion {
   forma_pago: 'EFECTIVO' | 'TARJETA' | 'TRANSFERENCIA'
   acepta_instalacion: boolean
   plazo_meses: number
+  estado: 'PENDIENTE' | 'ACEPTADA' | 'RECHAZADA' | 'VENCIDA'
   fecha_creacion: string
 }
 
 export const cotizacionesService = {
   // Obtener cotizaciones con filtros
-  async getCotizaciones(filters: { search?: string; all?: boolean; page?: number }): Promise<{ count: number; results: Cotizacion[] }> {
+  async getCotizaciones(filters: { search?: string; estado?: string; lotificacion?: string | number; all?: boolean; page?: number }): Promise<{ count: number; results: Cotizacion[] }> {
     const params = new URLSearchParams()
     if (filters.search) params.append('search', filters.search)
+    if (filters.estado && filters.estado !== 'TODOS') params.append('estado', filters.estado)
+    if (filters.lotificacion) params.append('lotificacion', filters.lotificacion.toString())
     if (filters.all) params.append('all', 'true')
     if (filters.page) params.append('page', filters.page.toString())
 
@@ -112,6 +115,20 @@ export const cotizacionesService = {
   // Convertir a Venta
   async convertirAVenta(cotizacionId: number): Promise<{mensaje: string; venta_id: number}> {
     return apiRequest<{mensaje: string; venta_id: number}>(`/ventas/cotizaciones/${cotizacionId}/convertir_a_venta/`, {
+      method: 'POST',
+    })
+  },
+  
+  // Rechazar Cotizacion
+  async rechazarCotizacion(cotizacionId: number): Promise<any> {
+    return apiRequest<any>(`/ventas/cotizaciones/${cotizacionId}/rechazar/`, {
+      method: 'POST',
+    })
+  },
+
+  // Restaurar Cotizacion
+  async restaurarCotizacion(cotizacionId: number): Promise<any> {
+    return apiRequest<any>(`/ventas/cotizaciones/${cotizacionId}/restaurar/`, {
       method: 'POST',
     })
   },

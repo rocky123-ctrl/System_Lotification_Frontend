@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useState, useEffect, useCallback } from "react"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import ProtectedRoute from "@/components/protected-route"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -11,118 +11,278 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Calendar, ArrowLeft, Info, ReceiptText, RefreshCw } from "lucide-react"
+import { Calendar, ArrowLeft, Info, ReceiptText, RefreshCw, Printer } from "lucide-react"
+import { toast } from "sonner"
 
-// Mock Data Structure
-const mockClients = [
-  { id: 1, nombre: "Juan Pérez", dpi: "1234 56789 0101", telefono: "5555-1234" },
-  { id: 2, nombre: "María González", dpi: "9876 54321 0101", telefono: "5555-4321" },
-  { id: 3, nombre: "Carlos Rodríguez", dpi: "5678 12345 0101", telefono: "5555-8765" },
-];
+import { ventasService, Venta } from "@/lib/ventas-service"
+import { cuentasCobrarService, Cuota, BitacoraCambio, Pago } from "@/lib/cuentas-cobrar-service"
+import { lotificacionService, Lotificacion } from "@/lib/lotificacion-service"
+import { apiInstance } from "@/lib/api"
 
-const mockLotsByClient: Record<number, any[]> = {
-  1: [
-    { id: 101, numeroLote: "A-15", proyecto: "Residenciales El Bosque", estado: "Pagando" },
-    { id: 102, numeroLote: "B-22", proyecto: "Residenciales El Bosque", estado: "Completado" }
-  ],
-  2: [
-    { id: 201, numeroLote: "C-10", proyecto: "Vistas del Valle", estado: "Pagando" }
-  ],
-  3: [
-    { id: 301, numeroLote: "A-02", proyecto: "Colinas Verdes", estado: "Pagando" },
-    { id: 302, numeroLote: "C-05", proyecto: "Colinas Verdes", estado: "Completado" }
-  ]
-};
-
-const mockCuotasByLot: Record<number, any[]> = {
-  101: [
-    { id: 1001, numero: 1, fechaPago: "2026-01-20", monto: 1500, estado: "pagado" },
-    { id: 1002, numero: 2, fechaPago: "2026-02-20", monto: 1500, estado: "pagado" },
-    { id: 1003, numero: 3, fechaPago: "2026-03-20", monto: 1500, estado: "vencido" },
-    { id: 1004, numero: 4, fechaPago: "2026-04-20", monto: 1500, estado: "pendiente" },
-  ],
-  102: [
-    { id: 2001, numero: 1, fechaPago: "2025-01-20", monto: 1500, estado: "pagado" },
-    { id: 2002, numero: 2, fechaPago: "2025-02-20", monto: 1500, estado: "pagado" },
-  ],
-  201: [
-    { id: 3001, numero: 1, fechaPago: "2026-03-25", monto: 1200, estado: "vencido" },
-    { id: 3002, numero: 2, fechaPago: "2026-04-25", monto: 1200, estado: "pendiente" },
-  ],
-  301: [
-    { id: 4001, numero: 1, fechaPago: "2026-02-15", monto: 1800, estado: "pagado" },
-    { id: 4002, numero: 2, fechaPago: "2026-03-15", monto: 1800, estado: "vencido" },
-  ],
-  302: [
-    { id: 5001, numero: 1, fechaPago: "2025-10-10", monto: 2000, estado: "pagado" },
-  ]
-};
-
-const mockCambiosByLot: Record<number, any[]> = {
-  101: [
-    { id: 1, numero: 1, fecha: "2026-02-15", descripcion: "Cambio de titular del lote" }
-  ],
-  201: [
-    { id: 2, numero: 1, fecha: "2026-03-01", descripcion: "Ajuste de tasa de interés" }
-  ],
-};
-
-type ViewState = 'clients' | 'client_details';
+type ViewMode = 'clients' | 'purchases' | 'details';
 
 export default function CuentasPorCobrarPage() {
-  const [currentView, setCurrentView] = useState<ViewState>('clients')
-  const [selectedClient, setSelectedClient] = useState<any>(null)
-  const [expandedLotId, setExpandedLotId] = useState<number | null>(null)
+  const [viewMode, setViewMode] = useState<ViewMode>('clients')
+  const [ventas, setVentas] = useState<Venta[]>([]) // Todas las ventas de la lotificación para agrupar
+  const [loadingVentas, setLoadingVentas] = useState(false)
+  const [search, setSearch] = useState('')
+  
+  const [lotificaciones, setLotificaciones] = useState<Lotificacion[]>([])
+  const [selectedLotificacionId, setSelectedLotificacionId] = useState<string>('')
+  const [loadingLotificaciones, setLoadingLotificaciones] = useState(true)
+
+  const [selectedClient, setSelectedClient] = useState<{ id: number, nombre: string } | null>(null)
+  const [selectedVenta, setSelectedVenta] = useState<Venta | null>(null)
+  const [cuotas, setCuotas] = useState<Cuota[]>([])
+  const [bitacora, setBitacora] = useState<BitacoraCambio[]>([])
+  const [loadingDetails, setLoadingDetails] = useState(false)
+  
+  const [cuotasPage, setCuotasPage] = useState(1)
+  const [cuotasTotal, setCuotasTotal] = useState(0)
+  const [cuotasAnio, setCuotasAnio] = useState('all')
+  const [cuotasMes, setCuotasMes] = useState('all')
+  
+  const [bitacoraPage, setBitacoraPage] = useState(1)
+  const [bitacoraTotal, setBitacoraTotal] = useState(0)
+  const [bitacoraAnio, setBitacoraAnio] = useState('all')
+  const [bitacoraMes, setBitacoraMes] = useState('all')
+
+  const years = Array.from({ length: 6 }, (_, i) => (new Date().getFullYear() - 1 + i).toString())
+  const months = [
+    { value: '1', label: 'Enero' }, { value: '2', label: 'Febrero' }, { value: '3', label: 'Marzo' },
+    { value: '4', label: 'Abril' }, { value: '5', label: 'Mayo' }, { value: '6', label: 'Junio' },
+    { value: '7', label: 'Julio' }, { value: '8', label: 'Agosto' }, { value: '9', label: 'Septiembre' },
+    { value: '10', label: 'Octubre' }, { value: '11', label: 'Noviembre' }, { value: '12', label: 'Diciembre' }
+  ]
   
   // Payment Modal State
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false)
-  const [selectedInstallment, setSelectedInstallment] = useState<any>(null)
-  const [compensationPrc, setCompensationPrc] = useState<number>(0)
+  const [selectedInstallment, setSelectedInstallment] = useState<Cuota | null>(null)
+  const [montoMora, setMontoMora] = useState<number>(0)
+  const [metodoPago, setMetodoPago] = useState<'Efectivo' | 'Tarjeta' | 'Transferencia' | 'Depósito'>('Efectivo')
+  const [referencia, setReferencia] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const handleRevisarHistorial = (client: any) => {
+  const fetchLotificaciones = useCallback(async () => {
+    try {
+      setLoadingLotificaciones(true)
+      const data = await lotificacionService.getLotificaciones()
+      setLotificaciones(data)
+      if (data.length > 0) {
+        setSelectedLotificacionId(data[0].id.toString())
+      }
+    } catch (error) {
+      toast.error('Error al cargar lotificaciones')
+    } finally {
+      setLoadingLotificaciones(false)
+    }
+  }, [])
+
+  const fetchVentas = useCallback(async () => {
+    if (!selectedLotificacionId) return
+    
+    try {
+      setLoadingVentas(true)
+      const res = await ventasService.getHistorialVentas({ 
+        all: true, 
+        estado: 'ACTIVAS', 
+        search,
+        lotificacion: selectedLotificacionId
+      })
+      setVentas(res.results)
+    } catch (error) {
+      toast.error('Error al cargar clientes')
+    } finally {
+      setLoadingVentas(false)
+    }
+  }, [search, selectedLotificacionId])
+
+  useEffect(() => {
+    fetchLotificaciones()
+  }, [fetchLotificaciones])
+
+  useEffect(() => {
+    fetchVentas()
+  }, [fetchVentas])
+
+  const loadCuotas = async () => {
+    if (!selectedVenta) return
+    try {
+      const res = await cuentasCobrarService.getCuotasByVenta(selectedVenta.id, { 
+        page: cuotasPage, 
+        anio: cuotasAnio, 
+        mes: cuotasMes 
+      })
+      setCuotas(res.results)
+      setCuotasTotal(res.count)
+    } catch (error) {
+      toast.error('Error al cargar cuotas')
+    }
+  }
+
+  const loadBitacora = async () => {
+    if (!selectedVenta) return
+    try {
+      const res = await cuentasCobrarService.getBitacoraByVenta(selectedVenta.id, { 
+        page: bitacoraPage, 
+        anio: bitacoraAnio, 
+        mes: bitacoraMes 
+      })
+      setBitacora(res.results)
+      setBitacoraTotal(res.count)
+    } catch (error) {
+      toast.error('Error al cargar bitácora')
+    }
+  }
+
+  const loadVentaDetails = async (venta: Venta) => {
+    setSelectedVenta(venta)
+    setViewMode('details')
+    setCuotasPage(1)
+    setBitacoraPage(1)
+    setCuotasAnio('all')
+    setCuotasMes('all')
+    setBitacoraAnio('all')
+    setBitacoraMes('all')
+  }
+
+  useEffect(() => {
+    if (viewMode === 'details' && selectedVenta) {
+      loadCuotas()
+    }
+  }, [viewMode, selectedVenta, cuotasPage, cuotasAnio, cuotasMes])
+
+  useEffect(() => {
+    if (viewMode === 'details' && selectedVenta) {
+      loadBitacora()
+    }
+  }, [viewMode, selectedVenta, bitacoraPage, bitacoraAnio, bitacoraMes])
+
+  const handleSelectClient = (client: { id: number, nombre: string }) => {
     setSelectedClient(client)
-    setCurrentView('client_details')
-    setExpandedLotId(null)
+    setViewMode('purchases')
   }
 
   const handleVolver = () => {
-    setCurrentView('clients')
-    setSelectedClient(null)
-    setExpandedLotId(null)
+    if (viewMode === 'details') {
+      setViewMode('purchases')
+      setSelectedVenta(null)
+    } else if (viewMode === 'purchases') {
+      setViewMode('clients')
+      setSelectedClient(null)
+    }
   }
 
-  const toggleExpandLot = (lotId: number) => {
-    setExpandedLotId(prev => prev === lotId ? null : lotId)
+  // Clientes únicos basados en las ventas cargadas
+  const getUniqueClients = () => {
+    const clientsMap = new Map<number, string>()
+    ventas.forEach(v => {
+      if (!clientsMap.has(v.cliente)) {
+        clientsMap.set(v.cliente, v.cliente_nombre)
+      }
+    })
+    
+    return Array.from(clientsMap.entries()).map(([id, nombre]) => ({ id, nombre }))
   }
 
-  const handleOpenPayment = (installment: any) => {
-    setSelectedInstallment(installment)
-    setCompensationPrc(0)
+  // Ventas del cliente seleccionado
+  const getClientVentas = () => {
+    if (!selectedClient) return []
+    return ventas.filter(v => v.cliente === selectedClient.id)
+  }
+
+  const handleOpenPayment = (cuota: Cuota) => {
+    setSelectedInstallment(cuota)
+    setMontoMora(0)
+    setMetodoPago('Efectivo')
+    setReferencia('')
     setIsPaymentModalOpen(true)
   }
 
+  const getClientStats = () => {
+    const clientVentas = getClientVentas()
+    const totalVentas = clientVentas.length
+    const totalValor = clientVentas.reduce((sum, v) => sum + Number(v.valor_lote), 0)
+    const financedVentas = clientVentas.filter(v => v.tipo_pago === 'FINANCIADO')
+    const totalDeuda = financedVentas.reduce((sum, v) => sum + Number(v.monto_financiar), 0)
+    
+    return { totalVentas, totalValor, totalDeuda, financedCount: financedVentas.length }
+  }
+
+  const handlePrintRecibo = async (cuotaId: number) => {
+    try {
+      // Usamos apiInstance para que incluya automáticamente el token y el prefijo /api
+      const response = await apiInstance.get(`/cuentas-cobrar/cuotas/${cuotaId}/recibo/`, {
+        responseType: 'blob'
+      })
+      
+      const blob = new Blob([response.data], { type: 'application/pdf' })
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.target = '_blank'
+      link.click()
+      
+      toast.success('Recibo generado correctamente')
+    } catch (error: any) {
+      console.error('Error al imprimir recibo:', error)
+      toast.error('No se pudo generar el recibo. Verifique que el pago esté registrado.')
+    }
+  }
+
+  const getVentaSummaryStats = () => {
+    if (!cuotas.length) return null
+    const pagadas = cuotas.filter(c => c.estado === 'Pagado').length
+    const pendientes = cuotas.filter(c => c.estado === 'Pendiente').length
+    const vencidas = cuotas.filter(c => c.estado === 'Vencido' || (c.fecha_programada < new Date().toISOString().split('T')[0] && c.estado === 'Pendiente')).length
+    
+    return { pagadas, pendientes, vencidas, total: cuotas.length }
+  }
+
+  const handleSugerirMora = () => {
+    if (selectedInstallment && selectedInstallment.mora_sugerida) {
+      setMontoMora(Number(selectedInstallment.mora_sugerida))
+    }
+  }
+
+  const handleSubmitPago = async () => {
+    if (!selectedInstallment) return
+
+    setIsSubmitting(true)
+    try {
+      const pagoData: Pago = {
+        cuota: selectedInstallment.id,
+        monto_base: selectedInstallment.monto_cuota,
+        monto_mora: montoMora.toString(),
+        metodo_pago: metodoPago,
+        referencia: referencia
+      }
+      await cuentasCobrarService.registrarPago(pagoData)
+      toast.success('Pago registrado exitosamente')
+      setIsPaymentModalOpen(false)
+      if (selectedVenta) {
+        loadVentaDetails(selectedVenta) // Recargar datos
+      }
+    } catch (error) {
+      toast.error('Error al registrar pago')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
   const getBadgeForInstallmentStatus = (estado: string) => {
-    switch (estado.toLowerCase()) {
-      case "vencido": return <Badge variant="destructive">Vencido</Badge>
-      case "pendiente": return <Badge variant="outline" className="border-blue-500 text-blue-600">Pendiente</Badge>
-      case "pagado": return <Badge variant="secondary" className="bg-green-100 text-green-800 hover:bg-green-100 border-transparent">Pagado</Badge>
+    switch (estado) {
+      case "Vencido": return <Badge variant="destructive">Vencido</Badge>
+      case "Pendiente": return <Badge variant="outline" className="border-yellow-500 text-yellow-600">Pendiente</Badge>
+      case "Pagado": return <Badge variant="secondary" className="bg-green-100 text-green-800 border-transparent">Pagado</Badge>
+      case "Revertido": return <Badge variant="outline" className="bg-gray-100 text-gray-800 border-transparent">Revertido</Badge>
       default: return <Badge>{estado}</Badge>
     }
   }
 
-  const getBadgeForLotStatus = (estado: string) => {
-    if (estado.toLowerCase() === 'completado') {
-      return <Badge variant="secondary" className="bg-green-100 text-green-800 border-transparent">Completado</Badge>
-    }
-    return <Badge variant="outline" className="border-blue-500 text-blue-600">Pagando</Badge>
-  }
-
   const calculateTotalAmount = () => {
     if (!selectedInstallment) return 0;
-    const isVencido = selectedInstallment.estado.toLowerCase() === 'vencido';
-    const baseAmount = selectedInstallment.monto;
-    const compensation = isVencido ? (baseAmount * (compensationPrc / 100)) : 0;
-    return baseAmount + compensation;
+    return Number(selectedInstallment.monto_cuota) + montoMora;
   }
 
   return (
@@ -137,38 +297,86 @@ export default function CuentasPorCobrarPage() {
             </div>
           </div>
 
-          {currentView === 'clients' && (
+          {/* 1. SELECCIÓN DE CLIENTE */}
+          {viewMode === 'clients' && (
             <Card>
               <CardHeader>
-                <CardTitle>Listado de Clientes</CardTitle>
+                <CardTitle>Selección de Cliente</CardTitle>
                 <CardDescription>
-                  Seleccione un cliente para revisar la información de sus lotes y cuotas.
+                  Listado de clientes con compras registradas en la lotificación seleccionada.
                 </CardDescription>
               </CardHeader>
               <CardContent>
+                <div className="flex flex-col md:flex-row gap-4 mb-6">
+                  <div className="flex-1 max-w-md">
+                    <Label htmlFor="search" className="mb-2 block">Buscar Cliente</Label>
+                    <Input 
+                      id="search"
+                      placeholder="Nombre del cliente..." 
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                    />
+                  </div>
+                  <div className="w-full md:w-[250px]">
+                    <Label htmlFor="lotificacion" className="mb-2 block">Lotificación</Label>
+                    <Select 
+                      value={selectedLotificacionId} 
+                      onValueChange={setSelectedLotificacionId}
+                      disabled={loadingLotificaciones}
+                    >
+                      <SelectTrigger id="lotificacion">
+                        <SelectValue placeholder={loadingLotificaciones ? "Cargando..." : "Seleccione lotificación"} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {lotificaciones.map((lot) => (
+                          <SelectItem key={lot.id} value={lot.id.toString()}>
+                            {lot.nombre}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
                 <div className="rounded-md border">
                   <Table>
                     <TableHeader className="bg-muted/50">
                       <TableRow>
                         <TableHead>Nombre del Cliente</TableHead>
-                        <TableHead>DPI</TableHead>
-                        <TableHead>Teléfono</TableHead>
+                        <TableHead className="text-center">Total Compras</TableHead>
                         <TableHead className="text-right">Acciones</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {mockClients.map((cliente) => (
-                        <TableRow key={cliente.id}>
-                          <TableCell className="font-medium">{cliente.nombre}</TableCell>
-                          <TableCell>{cliente.dpi}</TableCell>
-                          <TableCell>{cliente.telefono}</TableCell>
+                      {loadingVentas ? (
+                        <TableRow>
+                          <TableCell colSpan={3} className="text-center py-8">
+                            <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-2 text-primary" />
+                            Cargando clientes...
+                          </TableCell>
+                        </TableRow>
+                      ) : getUniqueClients().map((client) => (
+                        <TableRow key={client.id} className="hover:bg-slate-50 transition-colors">
+                          <TableCell className="font-semibold text-lg py-4">{client.nombre}</TableCell>
+                          <TableCell className="text-center">
+                            <Badge variant="outline" className="bg-blue-50">
+                              {ventas.filter(v => v.cliente === client.id).length} registro(s)
+                            </Badge>
+                          </TableCell>
                           <TableCell className="text-right">
-                            <Button size="sm" onClick={() => handleRevisarHistorial(cliente)}>
-                              Revisar Historial
+                            <Button onClick={() => handleSelectClient(client)}>
+                              Ver Compras
                             </Button>
                           </TableCell>
                         </TableRow>
                       ))}
+                      {!loadingVentas && getUniqueClients().length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={3} className="text-center py-12 text-muted-foreground italic">
+                            No se encontraron clientes para esta lotificación
+                          </TableCell>
+                        </TableRow>
+                      )}
                     </TableBody>
                   </Table>
                 </div>
@@ -176,162 +384,386 @@ export default function CuentasPorCobrarPage() {
             </Card>
           )}
 
-          {currentView === 'client_details' && selectedClient && (
+          {/* 2. HISTORIAL DE COMPRAS DEL CLIENTE */}
+          {viewMode === 'purchases' && selectedClient && (
             <div className="space-y-6">
-              <div className="flex items-center gap-4">
-                <Button variant="outline" size="icon" onClick={handleVolver} title="Regresar a clientes">
-                  <ArrowLeft className="h-4 w-4" />
-                </Button>
-                <div>
-                  <h2 className="text-2xl font-bold">{selectedClient.nombre}</h2>
-                  <p className="text-sm text-muted-foreground">Revisión de lotes y cuotas del cliente</p>
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                  <Button variant="outline" size="icon" onClick={handleVolver}>
+                    <ArrowLeft className="h-4 w-4" />
+                  </Button>
+                  <div>
+                    <h2 className="text-2xl font-bold">Compras de {selectedClient.nombre}</h2>
+                    <p className="text-sm text-muted-foreground">Listado de lotes adquiridos en {lotificaciones.find(l => l.id.toString() === selectedLotificacionId)?.nombre}</p>
+                  </div>
                 </div>
+                
+                {/* Resumen rápido del cliente */}
+                <Card className="bg-slate-50/50 border-dashed border-slate-300">
+                  <CardContent className="py-3 px-4 flex gap-6">
+                    <div className="text-center border-r pr-6">
+                      <p className="text-xs text-muted-foreground uppercase font-semibold">Total Lotes</p>
+                      <p className="text-xl font-bold">{getClientStats().totalVentas}</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-xs text-muted-foreground uppercase font-semibold">Valor Acumulado</p>
+                      <p className="text-xl font-bold text-primary">Q {getClientStats().totalValor.toLocaleString()}</p>
+                    </div>
+                  </CardContent>
+                </Card>
               </div>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle>Lotes del Cliente</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="rounded-md border">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {getClientVentas().map((venta) => (
+                  <Card key={venta.id} className="overflow-hidden hover:shadow-lg transition-all group border-slate-200">
+                    <CardHeader className="border-b bg-slate-50/30">
+                      <div className="flex justify-between items-start">
+                        <CardTitle className="text-xl">Lote {venta.lote_numero}</CardTitle>
+                        <Badge variant={venta.tipo_pago === 'FINANCIADO' ? 'default' : 'secondary'}>
+                          {venta.tipo_pago}
+                        </Badge>
+                      </div>
+                      <CardDescription>Manzana {venta.lote_manzana}</CardDescription>
+                    </CardHeader>
+                    <CardContent className="pt-6 space-y-4">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Valor Final:</span>
+                        <span className="font-bold text-lg">
+                          Q {(Number(venta.valor_lote) + (venta.acepta_instalacion ? Number(venta.lote_costo_instalacion || 0) : 0)).toFixed(2)}
+                        </span>
+                      </div>
+                      
+                      {venta.acepta_instalacion && (
+                        <div className="text-[10px] text-emerald-600 font-medium px-2 py-1 bg-emerald-50 rounded border border-emerald-100 inline-block">
+                          Incluye Costo de Instalación (Q {Number(venta.lote_costo_instalacion).toFixed(2)})
+                        </div>
+                      )}
+                      
+                      {venta.tipo_pago === 'FINANCIADO' && (
+                        <div className="space-y-2 border-t pt-3">
+                          <div className="flex justify-between text-sm">
+                            <span className="text-muted-foreground">Enganche:</span>
+                            <span className="font-medium text-slate-700">Q {Number(venta.enganche).toFixed(2)}</span>
+                          </div>
+                          <div className="flex justify-between text-sm">
+                            <span className="text-muted-foreground">Monto Financiado:</span>
+                            <span className="font-bold text-indigo-600">Q {Number(venta.monto_financiar).toFixed(2)}</span>
+                          </div>
+                          <div className="flex justify-between text-sm">
+                            <span className="text-muted-foreground">Plazo:</span>
+                            <span className="font-medium">{venta.plazo_meses} meses</span>
+                          </div>
+                        </div>
+                      )}
+
+                      <Button 
+                        className="w-full mt-4 group-hover:translate-y-[-2px] transition-transform shadow-sm" 
+                        variant={venta.tipo_pago === 'FINANCIADO' ? 'default' : 'outline'}
+                        onClick={() => loadVentaDetails(venta)}
+                      >
+                        {venta.tipo_pago === 'FINANCIADO' ? 'Ver Estado de Pagos' : 'Ver Detalles de Compra'}
+                      </Button>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 3. DETALLE DE LA VENTA / ESTADO DE PAGOS */}
+          {viewMode === 'details' && selectedVenta && (
+            <div className="space-y-6">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                  <Button variant="outline" size="icon" onClick={handleVolver} title="Regresar">
+                    <ArrowLeft className="h-4 w-4" />
+                  </Button>
+                  <div>
+                    <h2 className="text-2xl font-bold">
+                      {selectedVenta.tipo_pago === 'FINANCIADO' ? 'Estado de Pagos' : 'Resumen de Compra'} 
+                      - Lote {selectedVenta.lote_numero}
+                    </h2>
+                    <p className="text-sm text-muted-foreground">Cliente: {selectedVenta.cliente_nombre}</p>
+                  </div>
+                </div>
+
+                {selectedVenta.tipo_pago === 'FINANCIADO' && getVentaSummaryStats() && (
+                  <div className="flex gap-4">
+                    <div className="bg-green-50 px-3 py-1 rounded-full border border-green-200 text-xs font-bold text-green-700">
+                      {getVentaSummaryStats()?.pagadas} Pagadas
+                    </div>
+                    <div className="bg-blue-50 px-3 py-1 rounded-full border border-blue-200 text-xs font-bold text-blue-700">
+                      {getVentaSummaryStats()?.pendientes} Pendientes
+                    </div>
+                    {getVentaSummaryStats()?.vencidas! > 0 && (
+                      <div className="bg-red-50 px-3 py-1 rounded-full border border-red-200 text-xs font-bold text-red-700 animate-pulse">
+                        {getVentaSummaryStats()?.vencidas} Vencidas
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {loadingDetails ? (
+                 <div className="text-center py-12 text-muted-foreground">Cargando detalles...</div>
+              ) : selectedVenta.tipo_pago === 'CONTADO' ? (
+                <div className="bg-emerald-50 p-8 rounded-lg border border-emerald-200 text-center space-y-4">
+                  <div className="mx-auto w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center">
+                    <Badge className="bg-emerald-600 h-10 w-10 flex items-center justify-center p-0 text-white rounded-full">✓</Badge>
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-emerald-800">Compra al Contado Finalizada</h3>
+                    <p className="text-emerald-700">Este lote fue adquirido mediante un pago único y no posee cuotas pendientes.</p>
+                  </div>
+                  <div className="grid grid-cols-2 max-w-sm mx-auto text-sm gap-y-2 pt-4 border-t">
+                    <span className="text-emerald-600 text-left font-medium">Fecha de Venta:</span>
+                    <span className="text-emerald-800 text-right font-bold">{new Date(selectedVenta.fecha_creacion).toLocaleDateString()}</span>
+                    
+                    <span className="text-emerald-600 text-left font-medium">Precio Lote:</span>
+                    <span className="text-emerald-800 text-right font-bold">Q {Number(selectedVenta.valor_lote).toFixed(2)}</span>
+                    
+                    {selectedVenta.acepta_instalacion && (
+                      <>
+                        <span className="text-emerald-600 text-left font-medium">Instalación:</span>
+                        <span className="text-emerald-800 text-right font-bold">Q {Number(selectedVenta.lote_costo_instalacion).toFixed(2)}</span>
+                      </>
+                    )}
+                    
+                    <span className="text-emerald-600 text-left font-medium text-base pt-2">Total Pagado:</span>
+                    <span className="text-emerald-800 text-right font-bold text-xl pt-2">
+                      Q {(Number(selectedVenta.valor_lote) + (selectedVenta.acepta_instalacion ? Number(selectedVenta.lote_costo_instalacion || 0) : 0)).toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                    <Card className="bg-slate-50 border-slate-200">
+                      <CardContent className="p-4">
+                        <p className="text-xs text-muted-foreground font-semibold uppercase">Valor Total</p>
+                        <p className="text-xl font-bold">Q {(Number(selectedVenta.valor_lote) + (selectedVenta.acepta_instalacion ? Number(selectedVenta.lote_costo_instalacion || 0) : 0)).toFixed(2)}</p>
+                        {selectedVenta.acepta_instalacion && (
+                          <p className="text-[10px] text-emerald-600 font-medium">Incluye Instalación Q {Number(selectedVenta.lote_costo_instalacion).toFixed(2)}</p>
+                        )}
+                      </CardContent>
+                    </Card>
+                    <Card className="bg-slate-50 border-slate-200">
+                      <CardContent className="p-4">
+                        <p className="text-xs text-muted-foreground font-semibold uppercase">Enganche Pagado</p>
+                        <p className="text-xl font-bold text-emerald-600">Q {Number(selectedVenta.enganche).toFixed(2)}</p>
+                      </CardContent>
+                    </Card>
+                    <Card className="bg-slate-50 border-slate-200">
+                      <CardContent className="p-4">
+                        <p className="text-xs text-muted-foreground font-semibold uppercase">Monto Financiado</p>
+                        <p className="text-xl font-bold text-indigo-600">Q {Number(selectedVenta.monto_financiar).toFixed(2)}</p>
+                        <p className="text-[10px] text-indigo-500 font-medium">{selectedVenta.plazo_meses} meses al {selectedVenta.tasa_interes_anual}%</p>
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
+                    <div className="bg-slate-100 px-4 py-3 border-b flex flex-col md:flex-row md:items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 text-slate-800 font-semibold">
+                        <ReceiptText className="w-4 h-4" />
+                        Listado de Cuotas
+                      </div>
+                      
+                      <div className="flex items-center gap-2">
+                        <Select value={cuotasAnio} onValueChange={(val) => { setCuotasAnio(val); setCuotasPage(1); }}>
+                          <SelectTrigger className="w-[100px] h-8 text-xs bg-white">
+                            <SelectValue placeholder="Año" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">Año: Todos</SelectItem>
+                            {years.map(y => <SelectItem key={y} value={y}>{y}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                        
+                        <Select value={cuotasMes} onValueChange={(val) => { setCuotasMes(val); setCuotasPage(1); }}>
+                          <SelectTrigger className="w-[100px] h-8 text-xs bg-white">
+                            <SelectValue placeholder="Mes" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">Mes: Todos</SelectItem>
+                            {months.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
                     <Table>
-                      <TableHeader className="bg-muted/50">
+                      <TableHeader>
                         <TableRow>
-                          <TableHead>Lote</TableHead>
-                          <TableHead>Proyecto</TableHead>
+                          <TableHead className="w-[100px]">No. Cuota</TableHead>
+                          <TableHead>Fecha Prog.</TableHead>
+                          <TableHead>Monto Cuota</TableHead>
                           <TableHead>Estado</TableHead>
                           <TableHead className="text-right">Acciones</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {(mockLotsByClient[selectedClient.id] || []).map((lote) => (
-                          <React.Fragment key={lote.id}>
-                            <TableRow className={expandedLotId === lote.id ? "bg-muted/30" : ""}>
-                              <TableCell className="font-semibold text-blue-600">{lote.numeroLote}</TableCell>
-                              <TableCell>{lote.proyecto}</TableCell>
-                              <TableCell>{getBadgeForLotStatus(lote.estado)}</TableCell>
+                        {cuotas.map((cuota) => {
+                          const isPayable = ['Pendiente', 'Vencido'].includes(cuota.estado);
+                          return (
+                            <TableRow key={cuota.id}>
+                              <TableCell className="font-medium text-center">{cuota.no_cuota}</TableCell>
+                              <TableCell>
+                                <span className="flex items-center gap-2">
+                                  <Calendar className="h-3 w-3 text-muted-foreground" />
+                                  {cuota.fecha_programada}
+                                </span>
+                              </TableCell>
+                              <TableCell>Q {Number(cuota.monto_cuota).toFixed(2)}</TableCell>
+                              <TableCell>{getBadgeForInstallmentStatus(cuota.estado)}</TableCell>
                               <TableCell className="text-right">
-                                <Button 
-                                  variant={expandedLotId === lote.id ? "secondary" : "outline"} 
-                                  size="sm" 
-                                  onClick={() => toggleExpandLot(lote.id)}
-                                >
-                                  {expandedLotId === lote.id ? "Ocultar Detalles" : "Revisar"}
-                                </Button>
+                                <div className="flex justify-end gap-2">
+                                  {isPayable ? (
+                                    <Button size="sm" onClick={() => handleOpenPayment(cuota)}>Registrar Pago</Button>
+                                  ) : (
+                                    <>
+                                      {cuota.estado === 'Pagado' && (
+                                        <Button 
+                                          size="sm" 
+                                          variant="outline" 
+                                          className="text-blue-600 border-blue-200 hover:bg-blue-50"
+                                          onClick={() => handlePrintRecibo(cuota.id)}
+                                          title="Imprimir Recibo"
+                                        >
+                                          <Printer className="h-4 w-4 mr-1" />
+                                          Recibo
+                                        </Button>
+                                      )}
+                                      <span className="text-sm text-muted-foreground italic flex items-center">{cuota.estado}</span>
+                                    </>
+                                  )}
+                                </div>
                               </TableCell>
                             </TableRow>
-                            
-                            {expandedLotId === lote.id && (
-                              <TableRow className="bg-slate-50/50">
-                                <TableCell colSpan={4} className="p-0">
-                                  <div className="p-6 space-y-6">
-                                    
-                                    {/* Módulo de Cuotas */}
-                                    <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
-                                      <div className="bg-slate-100 px-4 py-3 border-b flex items-center justify-between">
-                                        <div className="flex items-center gap-2 text-slate-800 font-semibold">
-                                          <ReceiptText className="w-4 h-4" />
-                                          Listado de Cuotas
-                                        </div>
-                                      </div>
-                                      <Table>
-                                        <TableHeader>
-                                          <TableRow>
-                                            <TableHead className="w-[100px]">No. Cuota</TableHead>
-                                            <TableHead>Fecha de Pago</TableHead>
-                                            <TableHead>Monto Base</TableHead>
-                                            <TableHead>Estado</TableHead>
-                                            <TableHead className="text-right">Acciones</TableHead>
-                                          </TableRow>
-                                        </TableHeader>
-                                        <TableBody>
-                                          {(mockCuotasByLot[lote.id] || []).map((cuota) => {
-                                            const isPayable = cuota.estado.toLowerCase() !== 'pagado';
-                                            return (
-                                              <TableRow key={cuota.id}>
-                                                <TableCell className="font-medium text-center">{cuota.numero}</TableCell>
-                                                <TableCell>
-                                                  <span className="flex items-center gap-2">
-                                                    <Calendar className="h-3 w-3 text-muted-foreground" />
-                                                    {cuota.fechaPago}
-                                                  </span>
-                                                </TableCell>
-                                                <TableCell>Q {cuota.monto.toFixed(2)}</TableCell>
-                                                <TableCell>{getBadgeForInstallmentStatus(cuota.estado)}</TableCell>
-                                                <TableCell className="text-right">
-                                                  {isPayable ? (
-                                                    <Button size="sm" onClick={() => handleOpenPayment(cuota)}>Registrar Pago</Button>
-                                                  ) : (
-                                                    <span className="text-sm text-muted-foreground italic">Pagado</span>
-                                                  )}
-                                                </TableCell>
-                                              </TableRow>
-                                            )
-                                          })}
-                                          {!(mockCuotasByLot[lote.id] || []).length && (
-                                            <TableRow>
-                                              <TableCell colSpan={5} className="text-center py-4 text-muted-foreground">
-                                                No hay cuotas registradas.
-                                              </TableCell>
-                                            </TableRow>
-                                          )}
-                                        </TableBody>
-                                      </Table>
-                                    </div>
-
-                                    {/* Módulo de Cambios */}
-                                    <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
-                                      <div className="bg-slate-100 px-4 py-3 border-b flex items-center justify-between">
-                                        <div className="flex items-center gap-2 text-slate-800 font-semibold">
-                                          <RefreshCw className="w-4 h-4" />
-                                          Restructuración / Cambios de Condiciones
-                                        </div>
-                                      </div>
-                                      <Table>
-                                        <TableHeader>
-                                          <TableRow>
-                                            <TableHead className="w-[150px]">No. Cambio</TableHead>
-                                            <TableHead className="w-[150px]">Fecha</TableHead>
-                                            <TableHead>Descripción</TableHead>
-                                          </TableRow>
-                                        </TableHeader>
-                                        <TableBody>
-                                          {(mockCambiosByLot[lote.id] || []).map((cambio) => (
-                                            <TableRow key={cambio.id}>
-                                              <TableCell className="font-medium">Cambio #{cambio.numero}</TableCell>
-                                              <TableCell>{cambio.fecha}</TableCell>
-                                              <TableCell>{cambio.descripcion}</TableCell>
-                                            </TableRow>
-                                          ))}
-                                          {!(mockCambiosByLot[lote.id] || []).length && (
-                                            <TableRow>
-                                              <TableCell colSpan={3} className="text-center py-4 text-muted-foreground">
-                                                No hay registros de cambios para este lote.
-                                              </TableCell>
-                                            </TableRow>
-                                          )}
-                                        </TableBody>
-                                      </Table>
-                                    </div>
-
-                                  </div>
-                                </TableCell>
-                              </TableRow>
-                            )}
-                          </React.Fragment>
-                        ))}
-                        {!(mockLotsByClient[selectedClient.id] || []).length && (
-                           <TableRow>
-                             <TableCell colSpan={4} className="text-center py-4 text-muted-foreground">
-                               Este cliente no tiene lotes registrados.
-                             </TableCell>
-                           </TableRow>
+                          )
+                        })}
+                        {cuotas.length === 0 && (
+                          <TableRow>
+                            <TableCell colSpan={5} className="text-center py-8 text-muted-foreground italic">
+                              No se encontraron cuotas con los filtros seleccionados.
+                            </TableCell>
+                          </TableRow>
                         )}
                       </TableBody>
                     </Table>
+                    
+                    {/* Pagination for Cuotas */}
+                    {cuotasTotal > 10 && (
+                      <div className="bg-slate-50 px-4 py-3 border-t flex items-center justify-between">
+                        <p className="text-xs text-muted-foreground">
+                          Mostrando {cuotas.length} de {cuotasTotal} cuotas
+                        </p>
+                        <div className="flex gap-2">
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            disabled={cuotasPage === 1}
+                            onClick={() => setCuotasPage(prev => prev - 1)}
+                          >
+                            Anterior
+                          </Button>
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            disabled={cuotasPage * 10 >= cuotasTotal}
+                            onClick={() => setCuotasPage(prev => prev + 1)}
+                          >
+                            Siguiente
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                </CardContent>
-              </Card>
+
+                  {/* Módulo de Cambios */}
+                  <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
+                    <div className="bg-slate-100 px-4 py-3 border-b flex flex-col md:flex-row md:items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 text-slate-800 font-semibold">
+                        <RefreshCw className="w-4 h-4" />
+                        Historial de Movimientos / Auditoría
+                      </div>
+                      
+                      <div className="flex items-center gap-2">
+                        <Select value={bitacoraAnio} onValueChange={(val) => { setBitacoraAnio(val); setBitacoraPage(1); }}>
+                          <SelectTrigger className="w-[100px] h-8 text-xs bg-white">
+                            <SelectValue placeholder="Año" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">Año: Todos</SelectItem>
+                            {years.map(y => <SelectItem key={y} value={y}>{y}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                        
+                        <Select value={bitacoraMes} onValueChange={(val) => { setBitacoraMes(val); setBitacoraPage(1); }}>
+                          <SelectTrigger className="w-[100px] h-8 text-xs bg-white">
+                            <SelectValue placeholder="Mes" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">Mes: Todos</SelectItem>
+                            {months.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-[200px]">Fecha</TableHead>
+                          <TableHead>Descripción</TableHead>
+                          <TableHead className="w-[200px]">Usuario</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {bitacora.map((cambio) => (
+                          <TableRow key={cambio.id}>
+                            <TableCell className="font-medium text-xs md:text-sm">{new Date(cambio.fecha).toLocaleString()}</TableCell>
+                            <TableCell className="text-xs md:text-sm">{cambio.descripcion}</TableCell>
+                            <TableCell className="text-xs md:text-sm">{cambio.usuario_nombre}</TableCell>
+                          </TableRow>
+                        ))}
+                        {bitacora.length === 0 && (
+                          <TableRow>
+                            <TableCell colSpan={3} className="text-center py-8 text-muted-foreground italic">
+                              No hay registros en la bitácora con los filtros seleccionados.
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                    
+                    {/* Pagination for Bitacora */}
+                    {bitacoraTotal > 10 && (
+                      <div className="bg-slate-50 px-4 py-3 border-t flex items-center justify-between">
+                        <p className="text-xs text-muted-foreground">
+                          Mostrando {bitacora.length} de {bitacoraTotal} registros
+                        </p>
+                        <div className="flex gap-2">
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            disabled={bitacoraPage === 1}
+                            onClick={() => setBitacoraPage(prev => prev - 1)}
+                          >
+                            Anterior
+                          </Button>
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            disabled={bitacoraPage * 10 >= bitacoraTotal}
+                            onClick={() => setBitacoraPage(prev => prev + 1)}
+                          >
+                            Siguiente
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
           )}
 
@@ -343,8 +775,8 @@ export default function CuentasPorCobrarPage() {
                 <DialogDescription>
                   {selectedInstallment && (
                     <>
-                      Pago para la <strong>Cuota #{selectedInstallment.numero}</strong>. <br/>
-                      Vencimiento: {selectedInstallment.fechaPago}
+                      Pago para la <strong>Cuota #{selectedInstallment.no_cuota}</strong>. <br/>
+                      Vencimiento: {selectedInstallment.fecha_programada}
                     </>
                   )}
                 </DialogDescription>
@@ -352,12 +784,17 @@ export default function CuentasPorCobrarPage() {
               {selectedInstallment && (
                 <div className="grid gap-4 py-4">
                   
-                  {selectedInstallment.estado.toLowerCase() === 'vencido' && (
+                  {selectedInstallment.estado === 'Vencido' && (
                     <div className="bg-red-50 p-3 rounded-md flex items-start gap-2 border border-red-200">
                       <Info className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
-                      <div>
-                        <p className="text-sm font-semibold text-red-700">Cuota Vencida</p>
-                        <p className="text-xs text-red-600 mt-1">Puede asignar un porcentaje de compensación (mora) por el retraso en el pago.</p>
+                      <div className="w-full">
+                        <p className="text-sm font-semibold text-red-700">Cuota Vencida ({selectedInstallment.dias_atraso} días)</p>
+                        <div className="flex items-center justify-between mt-2">
+                           <p className="text-xs text-red-600">Mora sugerida: Q {Number(selectedInstallment.mora_sugerida).toFixed(2)}</p>
+                           <Button size="sm" variant="outline" className="h-7 text-xs" onClick={handleSugerirMora}>
+                             Aplicar Sugerencia
+                           </Button>
+                        </div>
                       </div>
                     </div>
                   )}
@@ -365,24 +802,22 @@ export default function CuentasPorCobrarPage() {
                   <div className="grid grid-cols-4 items-center gap-4">
                     <Label className="text-right font-medium">Monto Base</Label>
                     <div className="col-span-3 px-3 py-2 bg-slate-100 rounded-md font-semibold font-mono">
-                      Q {selectedInstallment.monto.toFixed(2)}
+                      Q {Number(selectedInstallment.monto_cuota).toFixed(2)}
                     </div>
                   </div>
 
-                  {selectedInstallment.estado.toLowerCase() === 'vencido' && (
-                    <div className="grid grid-cols-4 items-center gap-4">
-                      <Label htmlFor="compensacion" className="text-right font-medium">Extra Mora (%)</Label>
-                      <Input 
-                        id="compensacion" 
-                        type="number" 
-                        min="0" 
-                        max="100" 
-                        value={compensationPrc} 
-                        onChange={(e) => setCompensationPrc(Number(e.target.value) || 0)}
-                        className="col-span-3" 
-                      />
-                    </div>
-                  )}
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="mora" className="text-right font-medium">Mora Adicional (Q)</Label>
+                    <Input 
+                      id="mora" 
+                      type="number" 
+                      min="0"
+                      step="0.01"
+                      value={montoMora} 
+                      onChange={(e) => setMontoMora(Number(e.target.value) || 0)}
+                      className="col-span-3" 
+                    />
+                  </div>
 
                   <div className="grid grid-cols-4 items-center gap-4 border-t pt-4">
                     <Label className="text-right font-bold text-lg">Total</Label>
@@ -393,25 +828,36 @@ export default function CuentasPorCobrarPage() {
 
                   <div className="grid grid-cols-4 items-center gap-4 mt-2">
                     <Label htmlFor="metodo" className="text-right font-medium">Método</Label>
-                    <Select defaultValue="efectivo">
+                    <Select value={metodoPago} onValueChange={(val: any) => setMetodoPago(val)}>
                       <SelectTrigger className="col-span-3">
                         <SelectValue placeholder="Seleccione método" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="efectivo">Efectivo</SelectItem>
-                        <SelectItem value="transferencia">Transferencia Bancaria</SelectItem>
-                        <SelectItem value="cheque">Cheque</SelectItem>
+                        <SelectItem value="Efectivo">Efectivo</SelectItem>
+                        <SelectItem value="Tarjeta">Tarjeta</SelectItem>
+                        <SelectItem value="Transferencia">Transferencia Bancaria</SelectItem>
+                        <SelectItem value="Depósito">Depósito</SelectItem>
                       </SelectContent>
                     </Select>
+                  </div>
+
+                  <div className="grid grid-cols-4 items-center gap-4 mt-2">
+                    <Label htmlFor="referencia" className="text-right font-medium">Referencia</Label>
+                    <Input 
+                      id="referencia" 
+                      placeholder="Ej. Cheque #123, Transferencia #..." 
+                      value={referencia} 
+                      onChange={(e) => setReferencia(e.target.value)}
+                      className="col-span-3" 
+                    />
                   </div>
                 </div>
               )}
               <DialogFooter>
                 <Button variant="outline" type="button" onClick={() => setIsPaymentModalOpen(false)}>Cancelar</Button>
-                <Button type="button" onClick={() => {
-                   setIsPaymentModalOpen(false)
-                   // Ideally make an API call to update the installment status
-                }}>Confirmar Pago</Button>
+                <Button type="button" disabled={isSubmitting} onClick={handleSubmitPago}>
+                  {isSubmitting ? 'Procesando...' : 'Confirmar Pago'}
+                </Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>

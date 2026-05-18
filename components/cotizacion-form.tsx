@@ -110,8 +110,10 @@ export function CotizacionForm({ loteId, cotizacionId }: CotizacionFormProps) {
       if (!lote) return
       setIsLoadingCalculo(true)
       try {
-        const payload = {
-          valor_lote: incluirInstalacion ? parseFloat(lote.valor_total) : (parseFloat(lote.valor_total) - parseFloat(lote.costo_instalacion || "0")),
+        const payload: CalculoVentaPayload = {
+          valor_lote: parseFloat(lote.valor_total),
+          acepta_instalacion: incluirInstalacion,
+          costo_instalacion: parseFloat(lote.costo_instalacion || "0"),
           enganche: enganche,
           descuento: descuento,
           tipo_pago: tipoPago.toUpperCase() as "CONTADO" | "FINANCIADO",
@@ -142,6 +144,19 @@ export function CotizacionForm({ loteId, cotizacionId }: CotizacionFormProps) {
 
     if (enganche < 0 || descuento < 0) {
       return toast.error("Los valores financieros no pueden ser negativos.")
+    }
+
+    const valorTotal = (parseFloat(lote.valor_total) + (incluirInstalacion ? parseFloat(lote.costo_instalacion || "0") : 0));
+    const totalAPagar = valorTotal - descuento;
+    
+    if (tipoPago === 'contado') {
+      if (Math.abs(enganche - totalAPagar) > 0.01) {
+         return toast.error(`Para ventas al contado, el monto neto a pagar debe ser igual al total a cancelar (Q ${totalAPagar.toLocaleString('es-GT', { minimumFractionDigits: 2 })}).`);
+      }
+    } else {
+      if (enganche <= 0) return toast.error("El enganche propuesto debe ser mayor a 0 para una cotización financiada.");
+      if (plazoMeses <= 0) return toast.error("El plazo en meses debe ser mayor a 0.");
+      if (tasaInteres <= 0) return toast.error("La tasa de interés anual debe ser mayor a 0.");
     }
 
     setIsSubmitting(true)
@@ -255,7 +270,7 @@ export function CotizacionForm({ loteId, cotizacionId }: CotizacionFormProps) {
                      <SelectContent>
                        {clientes.map(c => (
                          <SelectItem key={c.id} value={String(c.id)}>
-                           {c.nombres} {c.apellidos} {c.telefono ? `- Tel: ${c.telefono}` : ''}
+                           {c.nombres} {c.apellidos} {c.nit ? `(NIT: ${c.nit})` : ''}
                          </SelectItem>
                        ))}
                      </SelectContent>

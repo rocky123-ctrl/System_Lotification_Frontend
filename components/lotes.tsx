@@ -230,11 +230,6 @@ export function Lotes() {
         setIsSubmittingLote(false)
         return
       }
-      if (valor - costo <= 0) {
-        setError("El saldo a financiar debe ser mayor a 0. Asegúrate de que el valor total sea mayor al costo de instalación.")
-        setIsSubmittingLote(false)
-        return
-      }
       const data: LoteCreate = {
         identificador: createLoteForm.identificador || undefined,
         manzana: parseInt(createLoteForm.manzanaId, 10),
@@ -393,7 +388,7 @@ export function Lotes() {
                       numero_lote: "",
                       metros_cuadrados: "0",
                       valor_total: "0",
-                      costo_instalacion: "5000",
+                      costo_instalacion: "1000",
                       uso_lote: "residencial",
                       estado_disponibilidad: "disponible",
                     })
@@ -692,7 +687,7 @@ export function Lotes() {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Valor total (Q)</Label>
+                <Label>Valor del lote (Base Q)</Label>
                 <Input
                   type="number"
                   step="0.01"
@@ -799,11 +794,7 @@ export function Lotes() {
                 const valor = parseFloat(editForm.valor_total)
                 const costo = parseFloat(editForm.costo_instalacion) || 0
                 if (isNaN(metros) || metros <= 0 || isNaN(valor) || valor <= 0) {
-                  setEditError("Metros cuadrados y valor total deben ser mayores a 0.")
-                  return
-                }
-                if (valor - costo <= 0) {
-                  setEditError("El valor total debe ser mayor al costo de instalación.")
+                  setEditError("Metros cuadrados y valor del lote deben ser mayores a 0.")
                   return
                 }
                 setEditError(null)
@@ -892,7 +883,7 @@ export function Lotes() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Valor total (Q)</Label>
+                  <Label>Valor del lote (Base Q)</Label>
                   <Input
                     type="number"
                     step="0.01"

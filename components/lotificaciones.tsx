@@ -9,6 +9,13 @@ import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -36,7 +43,9 @@ import {
   AlertCircle,
   MapPin,
   Trash2,
-  CheckCircle2
+  CheckCircle2,
+  Search,
+  Filter
 } from "lucide-react"
 import { 
   lotificacionService,
@@ -58,6 +67,12 @@ export function Lotificaciones() {
   const [lotificacionToDelete, setLotificacionToDelete] = useState<Lotificacion | null>(null)
   const [editingLotificacion, setEditingLotificacion] = useState<Lotificacion | null>(null)
   const [currentLotificacionData, setCurrentLotificacionData] = useState<Lotificacion | null>(null)
+
+  // Filtros y Búsqueda
+  const [searchTerm, setSearchTerm] = useState("")
+  const [filterStatus, setFilterStatus] = useState<"todas" | "activa" | "inactiva">("todas")
+  const [warningMessage, setWarningMessage] = useState<string | null>(null)
+  const [pendingSvgFile, setPendingSvgFile] = useState<File | null>(null)
 
   // Formulario
   const [formData, setFormData] = useState<LotificacionCreate>({
@@ -126,38 +141,55 @@ export function Lotificaciones() {
     cargarLotificaciones()
   }, [])
 
-  // Sincronizar filas de manzanas con total_manzanas (redimensionar al cambiar el número)
+  // Sincronizar el campo del formulario con el recuento real de manzanas
   useEffect(() => {
-    const N = formData.total_manzanas || 0
-    if (N <= 0) {
-      setManzanas([])
-      setManzanasPage(1)
-      return
-    }
-    setManzanas((prev) => {
-      const next = prev.slice(0, N)
-      while (next.length < N) next.push({ nombre: "", activo: true })
-      return next
-    })
-    setManzanasPage(1)
-  }, [formData.total_manzanas])
+    setFormData((prev) => ({ ...prev, total_manzanas: manzanas.length }))
+  }, [manzanas.length])
 
   // Al abrir para editar, cargar manzanas existentes desde el backend
   useEffect(() => {
-    const N = editingLotificacion?.total_manzanas ?? 0
-    if (!editingLotificacion?.id || N <= 0) return
+    if (!editingLotificacion?.id) return
     lotificacionService
       .getManzanas(editingLotificacion.id, true)
       .then((list) => {
-        const rows: ManzanaRow[] = []
-        for (let i = 0; i < N; i++) {
-          const m = list[i]
-          rows.push(m ? { id: m.id, nombre: m.nombre, activo: m.activo } : { nombre: "", activo: true })
-        }
-        setManzanas(rows)
+        setManzanas(list)
       })
       .catch(() => {})
-  }, [editingLotificacion?.id, editingLotificacion?.total_manzanas])
+  }, [editingLotificacion?.id])
+
+  // Manejar eliminación de manzana individual
+  const handleDeleteManzana = async (index: number, row: ManzanaRow) => {
+    if (row.id) {
+      try {
+        setIsSubmitting(true)
+        await lotificacionService.deleteManzana(row.id)
+        setManzanas((prev) => prev.filter((_, i) => i !== index))
+      } catch (err: any) {
+        console.error('[Lotificaciones] Error eliminando manzana:', err)
+        let errorMessage = 'Error al eliminar la manzana'
+        
+        if (err.status === 500 || err.message?.includes('500')) {
+          errorMessage = 'No se puede eliminar la manzana porque tiene lotes asociados. Elimina o desvincula los lotes primero.'
+        } else if (err.data) {
+          if (typeof err.data === 'string' && err.data.trim().startsWith('<')) {
+            errorMessage = 'Ocurrió un error en el servidor. Es muy probable que la manzana tenga lotes asociados.'
+          } else {
+            errorMessage = err.data.detail || err.data.message || err.data
+          }
+        }
+        
+        if (typeof errorMessage === 'string' && (errorMessage.includes('relacion') || errorMessage.includes('foreign key') || errorMessage.includes('constraint') || errorMessage.includes('ProtectedError'))) {
+          errorMessage = 'No se puede eliminar la manzana porque tiene lotes asociados en el sistema.'
+        }
+        
+        setWarningMessage(errorMessage)
+      } finally {
+        setIsSubmitting(false)
+      }
+    } else {
+      setManzanas((prev) => prev.filter((_, i) => i !== index))
+    }
+  }
 
   // Manejar envío de formulario
   const handleSubmit = async (e: React.FormEvent) => {
@@ -189,6 +221,16 @@ export function Lotificaciones() {
               : lotificacionService.createManzana(saved.id!, { nombre: row.nombre.slice(0, 10), activo: row.activo })
           )
         )
+      }
+
+      // Subir archivo SVG si se seleccionó uno durante la creación
+      if (pendingSvgFile && saved.id) {
+        try {
+          await lotificacionService.subirPlanoSvg(saved.id, pendingSvgFile)
+        } catch (svgErr) {
+          console.error('[Lotificaciones] Error subiendo el SVG durante la creación:', svgErr)
+          // No detenemos el flujo, ya que la lotificación se creó correctamente
+        }
       }
 
       await cargarLotificaciones()
@@ -233,6 +275,17 @@ export function Lotificaciones() {
 
     try {
       setIsSubmitting(true)
+
+      console.log('[Lotificaciones] Verificando en el backend si tiene lotes...')
+      const lotificacionActualizada = await lotificacionService.getLotificacion(lotificacionToDelete.id)
+      if (lotificacionActualizada.total_lotes > 0) {
+        setWarningMessage(`No se puede eliminar la lotificación "${lotificacionActualizada.nombre}" porque tiene ${lotificacionActualizada.total_lotes} lote(s) asociado(s).`)
+        setIsSubmitting(false)
+        setIsDeleteDialogOpen(false)
+        setLotificacionToDelete(null)
+        return
+      }
+
       console.log('[Lotificaciones] Eliminando lotificación:', lotificacionToDelete.id)
       
       await lotificacionService.deleteLotificacion(lotificacionToDelete.id)
@@ -252,28 +305,37 @@ export function Lotificaciones() {
       
       console.log('[Lotificaciones] Eliminación completada exitosamente')
     } catch (err: any) {
-      console.error('[Lotificaciones] Error eliminando lotificación:', err)
+      // Se omite el console.error para no saturar el inspector del navegador; el error se maneja vía UI
       
       let errorMessage = 'Error al eliminar la lotificación'
       
-      if (err.data) {
+      // Chequeo rápido de status 500 (común en ProtectedError de Django)
+      if (err.status === 500 || err.message?.includes('500')) {
+        errorMessage = 'No se puede eliminar la lotificación porque tiene registros asociados (manzanas, servicios, etc.). Elimina estos registros primero.'
+      } else if (err.data) {
         if (err.data.detail) {
           errorMessage = err.data.detail
         } else if (err.data.message) {
           errorMessage = err.data.message
         } else if (typeof err.data === 'string') {
-          errorMessage = err.data
+          // Si el backend devuelve HTML (ej. página de error cruda de Django)
+          if (err.data.trim().startsWith('<')) {
+            errorMessage = 'Ocurrió un error en el servidor. Es muy probable que la lotificación tenga registros asociados que impiden su eliminación segura.'
+          } else {
+            errorMessage = err.data
+          }
         }
       } else if (err.message) {
         errorMessage = err.message
       }
       
-      // Si el error es que tiene relaciones (manzanas, lotes), mostrar mensaje más claro
-      if (errorMessage.includes('relacion') || errorMessage.includes('foreign key') || errorMessage.includes('constraint')) {
-        errorMessage = 'No se puede eliminar la lotificación porque tiene manzanas o lotes asociados. Primero elimina o mueve esos registros.'
+      // Filtros adicionales por palabras clave de base de datos
+      if (errorMessage.includes('relacion') || errorMessage.includes('foreign key') || errorMessage.includes('constraint') || errorMessage.includes('ProtectedError')) {
+        errorMessage = 'No se puede eliminar la lotificación porque tiene registros asociados en el sistema. Primero elimina o desvincula esos registros.'
       }
       
-      alert(`Error: ${errorMessage}. Por favor, intenta de nuevo.`)
+      setWarningMessage(errorMessage)
+      setIsDeleteDialogOpen(false)
     } finally {
       setIsSubmitting(false)
     }
@@ -290,6 +352,9 @@ export function Lotificaciones() {
       total_lotes: 0,
       area_total_m2: 0
     })
+    setManzanas([])
+    setManzanasPage(1)
+    setPendingSvgFile(null)
     setEditingLotificacion(null)
     setCurrentLotificacionData(null)
     setIsDialogOpen(true)
@@ -306,6 +371,8 @@ export function Lotificaciones() {
       total_lotes: lotificacion.total_lotes || 0,
       area_total_m2: lotificacion.area_total_m2 || 0
     })
+    setManzanasPage(1)
+    setPendingSvgFile(null)
     setEditingLotificacion(lotificacion)
     setCurrentLotificacionData(lotificacion)
     setIsDialogOpen(true)
@@ -430,70 +497,53 @@ export function Lotificaciones() {
         </Button>
       </div>
 
-      {/* Información de la lotificación activa */}
-      {lotificacionActiva ? (
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="flex items-center gap-2">
-                  <Building2 className="h-5 w-5" />
-                  {lotificacionActiva.nombre}
-                </CardTitle>
-                <CardDescription className="flex items-center gap-2 mt-2">
-                  <MapPin className="h-4 w-4" />
-                  {lotificacionActiva.ubicacion || 'Sin ubicación'}
-                </CardDescription>
-              </div>
-              <Badge variant={lotificacionActiva.activo ? "default" : "secondary"}>
-                {lotificacionActiva.activo ? "Activa" : "Inactiva"}
-              </Badge>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <Label className="text-sm font-medium text-muted-foreground">Nombre</Label>
-                <p className="text-lg font-semibold">{lotificacionActiva.nombre}</p>
-              </div>
-              <div>
-                <Label className="text-sm font-medium text-muted-foreground">Ubicación</Label>
-                <p className="text-sm">{lotificacionActiva.ubicacion || 'No especificada'}</p>
-              </div>
-              <div className="md:col-span-2">
-                <Label className="text-sm font-medium text-muted-foreground">Descripción</Label>
-                <p className="text-sm">{lotificacionActiva.descripcion || 'Sin descripción'}</p>
-              </div>
-              <div>
-                <Label className="text-sm font-medium text-muted-foreground">Total de Manzanas</Label>
-                <p className="text-sm">{lotificacionActiva.total_manzanas || 0}</p>
-              </div>
-              <div>
-                <Label className="text-sm font-medium text-muted-foreground">Fecha de Creación</Label>
-                <p className="text-sm">{new Date(lotificacionActiva.fecha_creacion).toLocaleDateString('es-GT')}</p>
-              </div>
-              <div>
-                <Label className="text-sm font-medium text-muted-foreground">Última Actualización</Label>
-                <p className="text-sm">{new Date(lotificacionActiva.fecha_actualizacion).toLocaleDateString('es-GT')}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      ) : (
-        <Card>
-          <CardHeader>
-            <CardTitle>No hay lotificación activa</CardTitle>
-            <CardDescription>Crea una nueva lotificación para comenzar</CardDescription>
-          </CardHeader>
-          <CardContent>
+      {/* Filtros y Búsqueda */}
+      <div className="flex flex-col gap-4 md:flex-row md:items-center">
+        <div className="relative flex-1">
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Buscar por nombre o ubicación..."
+            className="pl-9"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+        </div>
+        <div className="w-full md:w-48">
+          <Select
+            value={filterStatus}
+            onValueChange={(value: "todas" | "activa" | "inactiva") => setFilterStatus(value)}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Estado" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todas">Todas</SelectItem>
+              <SelectItem value="activa">Activas</SelectItem>
+              <SelectItem value="inactiva">Inactivas</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      {/* Lista de todas las lotificaciones */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Todas las Lotificaciones</CardTitle>
+          <CardDescription>Lista de lotificaciones en el sistema</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {lotificaciones.length === 0 ? (
             <div className="text-center py-8">
-              <p className="text-muted-foreground mb-4">No hay lotificación activa en el sistema</p>
+              <p className="text-muted-foreground mb-4">No hay lotificaciones registradas en el sistema</p>
               <Button onClick={() => {
                 setFormData({
                   nombre: "",
                   descripcion: "",
                   ubicacion: "",
-                  activo: true
+                  activo: true,
+                  total_manzanas: 0,
+                  total_lotes: 0,
+                  area_total_m2: 0
                 })
                 setIsDialogOpen(true)
               }}>
@@ -501,20 +551,18 @@ export function Lotificaciones() {
                 Crear Lotificación
               </Button>
             </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Lista de todas las lotificaciones */}
-      {lotificaciones.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Todas las Lotificaciones ({lotificaciones.length})</CardTitle>
-            <CardDescription>Lista completa de lotificaciones en el sistema</CardDescription>
-          </CardHeader>
-          <CardContent>
+          ) : (
             <div className="space-y-2">
-              {lotificaciones.map((lot) => (
+              {lotificaciones
+                .filter((lot) => {
+                  const matchesSearch = lot.nombre.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                                        (lot.ubicacion && lot.ubicacion.toLowerCase().includes(searchTerm.toLowerCase()));
+                  const matchesFilter = filterStatus === "todas" ? true :
+                                        filterStatus === "activa" ? lot.activo === true :
+                                        lot.activo === false;
+                  return matchesSearch && matchesFilter;
+                })
+                .map((lot) => (
                 <div
                   key={lot.id}
                   className={`flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors ${
@@ -572,9 +620,9 @@ export function Lotificaciones() {
                 </div>
               ))}
             </div>
-          </CardContent>
-        </Card>
-      )}
+          )}
+        </CardContent>
+      </Card>
 
       {/* Dialog para crear/editar lotificación */}
       <Dialog open={isDialogOpen} onOpenChange={(open) => {
@@ -638,33 +686,27 @@ export function Lotificaciones() {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="total_manzanas">Total de Manzanas *</Label>
+                <Label htmlFor="total_manzanas">Total de Manzanas</Label>
                 <Input
                   id="total_manzanas"
                   type="number"
-                  min="0"
                   value={formData.total_manzanas}
-                  onChange={(e) => setFormData({ ...formData, total_manzanas: parseInt(e.target.value) || 0 })}
-                  required
-                  placeholder="0"
+                  disabled
                 />
                 <p className="text-xs text-muted-foreground">
-                  Número total de manzanas en la lotificación
+                  Total calculado a partir de las manzanas añadidas
                 </p>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="total_lotes">Total de Lotes *</Label>
+                <Label htmlFor="total_lotes">Total de Lotes</Label>
                 <Input
                   id="total_lotes"
                   type="number"
-                  min="0"
                   value={formData.total_lotes}
-                  onChange={(e) => setFormData({ ...formData, total_lotes: parseInt(e.target.value) || 0 })}
-                  required
-                  placeholder="0"
+                  disabled
                 />
                 <p className="text-xs text-muted-foreground">
-                  Número total de lotes en la lotificación
+                  Lotes totales calculados por el sistema
                 </p>
               </div>
               <div className="space-y-2">
@@ -684,75 +726,111 @@ export function Lotificaciones() {
                 </p>
               </div>
             </div>
-            {formData.total_manzanas > 0 && (
-              <div className="space-y-3 rounded-lg border p-4 bg-muted/30">
+            <div className="space-y-3 rounded-lg border p-4 bg-muted/30">
+              <div className="flex items-center justify-between">
                 <Label className="text-sm font-medium">Manzanas</Label>
-                <div className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-2 items-center text-sm">
-                  <span className="font-medium text-muted-foreground">Nombre (máx. 10)</span>
-                  <span className="font-medium text-muted-foreground">Activa</span>
-                  {((): ManzanaRow[] => {
-                    const start = (manzanasPage - 1) * MANZANAS_PER_PAGE
-                    return manzanas.slice(start, start + MANZANAS_PER_PAGE)
-                  })().map((row, localIndex) => {
-                    const index = (manzanasPage - 1) * MANZANAS_PER_PAGE + localIndex
-                    return (
-                      <span key={index} className="contents">
-                        <Input
-                          maxLength={10}
-                          value={row.nombre}
-                          onChange={(e) =>
-                            setManzanas((prev) =>
-                              prev.map((r, i) => (i === index ? { ...r, nombre: e.target.value } : r))
-                            )
-                          }
-                          placeholder={`Manzana ${index + 1}`}
-                          className="h-9"
-                        />
-                        <Switch
-                          checked={row.activo}
-                          onCheckedChange={(checked) =>
-                            setManzanas((prev) =>
-                              prev.map((r, i) => (i === index ? { ...r, activo: checked } : r))
-                            )
-                          }
-                        />
-                      </span>
-                    )
-                  })}
-                </div>
-                {manzanas.length > MANZANAS_PER_PAGE && (
-                  <div className="flex items-center justify-between pt-2">
-                    <p className="text-xs text-muted-foreground">
-                      Página {manzanasPage} de {Math.ceil(manzanas.length / MANZANAS_PER_PAGE)}
-                    </p>
-                    <div className="flex gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setManzanasPage((p) => Math.max(1, p - 1))}
-                        disabled={manzanasPage <= 1}
-                      >
-                        Anterior
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() =>
-                          setManzanasPage((p) =>
-                            Math.min(Math.ceil(manzanas.length / MANZANAS_PER_PAGE), p + 1)
-                          )
-                        }
-                        disabled={manzanasPage >= Math.ceil(manzanas.length / MANZANAS_PER_PAGE)}
-                      >
-                        Siguiente
-                      </Button>
-                    </div>
-                  </div>
-                )}
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => {
+                    setManzanas([...manzanas, { nombre: "", activo: true }])
+                    const newTotal = manzanas.length + 1
+                    setManzanasPage(Math.ceil(newTotal / MANZANAS_PER_PAGE))
+                  }}
+                  disabled={isSubmitting}
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Manzana +
+                </Button>
               </div>
-            )}
+              
+              {manzanas.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  No hay manzanas registradas. Haz clic en "Manzana +" para empezar.
+                </p>
+              ) : (
+                <>
+                  <div className="grid grid-cols-[1fr_auto_auto] gap-x-4 gap-y-2 items-center text-sm">
+                    <span className="font-medium text-muted-foreground">Nombre (máx. 10)</span>
+                    <span className="font-medium text-muted-foreground">Activa</span>
+                    <span className="font-medium text-muted-foreground text-center w-9">Acción</span>
+                    {((): ManzanaRow[] => {
+                      const start = (manzanasPage - 1) * MANZANAS_PER_PAGE
+                      return manzanas.slice(start, start + MANZANAS_PER_PAGE)
+                    })().map((row, localIndex) => {
+                      const index = (manzanasPage - 1) * MANZANAS_PER_PAGE + localIndex
+                      return (
+                        <span key={index} className="contents">
+                          <Input
+                            maxLength={10}
+                            value={row.nombre}
+                            onChange={(e) =>
+                              setManzanas((prev) =>
+                                prev.map((r, i) => (i === index ? { ...r, nombre: e.target.value } : r))
+                              )
+                            }
+                            placeholder={`Manzana ${index + 1}`}
+                            className="h-9"
+                            disabled={isSubmitting}
+                          />
+                          <Switch
+                            checked={row.activo}
+                            onCheckedChange={(checked) =>
+                              setManzanas((prev) =>
+                                prev.map((r, i) => (i === index ? { ...r, activo: checked } : r))
+                              )
+                            }
+                            disabled={isSubmitting}
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="text-destructive hover:text-destructive hover:bg-destructive/10 p-0 h-9 w-9"
+                            onClick={() => handleDeleteManzana(index, row)}
+                            disabled={isSubmitting}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </span>
+                      )
+                    })}
+                  </div>
+                  {manzanas.length > MANZANAS_PER_PAGE && (
+                    <div className="flex items-center justify-between pt-2">
+                      <p className="text-xs text-muted-foreground">
+                        Página {manzanasPage} de {Math.ceil(manzanas.length / MANZANAS_PER_PAGE)}
+                      </p>
+                      <div className="flex gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setManzanasPage((p) => Math.max(1, p - 1))}
+                          disabled={manzanasPage <= 1 || isSubmitting}
+                        >
+                          Anterior
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() =>
+                            setManzanasPage((p) =>
+                              Math.min(Math.ceil(manzanas.length / MANZANAS_PER_PAGE), p + 1)
+                            )
+                          }
+                          disabled={manzanasPage >= Math.ceil(manzanas.length / MANZANAS_PER_PAGE) || isSubmitting}
+                        >
+                          Siguiente
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
             <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/50">
               <div className="space-y-0.5">
                 <Label htmlFor="activo" className="text-base">Estado de la Lotificación</Label>
@@ -768,7 +846,7 @@ export function Lotificaciones() {
             </div>
 
             {/* Componente para subir/administrar SVG */}
-            {editingLotificacion && (
+            {editingLotificacion ? (
               <SVGUploader
                 lotificacion={currentLotificacionData || editingLotificacion}
                 lotificacionId={editingLotificacion.id}
@@ -777,6 +855,22 @@ export function Lotificaciones() {
                 disabled={isSubmitting}
                 isSubmitting={isSubmitting}
               />
+            ) : (
+              <div className="space-y-3 rounded-lg border p-4 bg-muted/30">
+                <Label className="text-sm font-medium">Plano SVG de la Lotificación</Label>
+                <div className="flex items-center gap-2">
+                  <Input 
+                    type="file" 
+                    accept=".svg,image/svg+xml" 
+                    onChange={(e) => setPendingSvgFile(e.target.files?.[0] || null)}
+                    disabled={isSubmitting}
+                    className="flex-1"
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Opcional. Selecciona un archivo SVG inicial. Podrás editarlo más tarde.
+                </p>
+              </div>
             )}
 
             <DialogFooter>
@@ -809,6 +903,26 @@ export function Lotificaciones() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Dialog de Advertencia */}
+      <AlertDialog open={!!warningMessage} onOpenChange={(open) => !open && setWarningMessage(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-amber-500">
+              <AlertCircle className="h-5 w-5" />
+              Advertencia
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-base text-foreground mt-2">
+              {warningMessage}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setWarningMessage(null)}>
+              Cerrar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Dialog de confirmación para eliminar */}
       <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>

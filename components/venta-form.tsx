@@ -35,13 +35,14 @@ export function VentaForm({ loteId, ventaId }: VentaFormProps) {
 
   // Campos de formulario
   const [selectedClienteId, setSelectedClienteId] = useState<string>("")
+  const [clienteSearch, setClienteSearch] = useState<string>("")
   const [tipoPago, setTipoPago] = useState<'contado' | 'financiado'>('financiado')
   const [enganche, setEnganche] = useState<number>(0)
   const [descuento, setDescuento] = useState<number>(0)
   const [plazoMeses, setPlazoMeses] = useState<number>(12)
   const [tasaInteres, setTasaInteres] = useState<number>(12)
   const [incluirInstalacion, setIncluirInstalacion] = useState(false)
-  const [formaPago, setFormaPago] = useState<'EFECTIVO' | 'TARJETA' | 'TRANSFERENCIA'>('EFECTIVO')
+  const [formaPago, setFormaPago] = useState<'EFECTIVO' | 'TARJETA' | 'TRANSFERENCIA' | 'DEPOSITO'>('EFECTIVO')
 
   // Status de Peticiones
   const [isSubmittingVenta, setIsSubmittingVenta] = useState(false)
@@ -92,8 +93,10 @@ export function VentaForm({ loteId, ventaId }: VentaFormProps) {
       if (!lote) return
       setIsLoadingCalculo(true)
       try {
-        const payload = {
-          valor_lote: incluirInstalacion ? parseFloat(lote.valor_total) : (parseFloat(lote.valor_total) - parseFloat(lote.costo_instalacion || "0")),
+        const payload: CalculoVentaPayload = {
+          valor_lote: parseFloat(lote.valor_total),
+          acepta_instalacion: incluirInstalacion,
+          costo_instalacion: parseFloat(lote.costo_instalacion || "0"),
           enganche: enganche,
           descuento: descuento,
           tipo_pago: tipoPago.toUpperCase() as "CONTADO" | "FINANCIADO",
@@ -124,6 +127,19 @@ export function VentaForm({ loteId, ventaId }: VentaFormProps) {
 
     if (enganche < 0 || descuento < 0) {
       return toast.error("Los valores financieros no pueden ser negativos.")
+    }
+
+    const valorTotal = (parseFloat(lote.valor_total) + (incluirInstalacion ? parseFloat(lote.costo_instalacion || "0") : 0));
+    const totalAPagar = valorTotal - descuento;
+    
+    if (tipoPago === 'contado') {
+      if (Math.abs(enganche - totalAPagar) > 0.01) {
+         return toast.error(`Para ventas al contado, el monto neto pagado debe ser igual al total a cancelar (Q ${totalAPagar.toLocaleString('es-GT', { minimumFractionDigits: 2 })}).`);
+      }
+    } else {
+      if (enganche <= 0) return toast.error("El enganche inicial debe ser mayor a 0 para una venta financiada.");
+      if (plazoMeses <= 0) return toast.error("El plazo en meses debe ser mayor a 0.");
+      if (tasaInteres <= 0) return toast.error("La tasa de interés anual debe ser mayor a 0.");
     }
 
     setIsSubmittingVenta(true)
@@ -228,21 +244,31 @@ export function VentaForm({ loteId, ventaId }: VentaFormProps) {
                <CardTitle className="text-base font-semibold">1. Datos del Cliente</CardTitle>
              </CardHeader>
              <CardContent className="pt-4 space-y-4">
-               <div className="space-y-2">
-                 <Label>Seleccionar Cliente Existente</Label>
-                 <Select value={selectedClienteId} onValueChange={setSelectedClienteId}>
-                   <SelectTrigger>
-                     <SelectValue placeholder="Busque y seleccione un cliente..." />
-                   </SelectTrigger>
-                   <SelectContent>
-                     {clientes.map(c => (
-                       <SelectItem key={c.id} value={String(c.id)}>
-                         {c.nombres} {c.apellidos} {c.telefono ? `- Télefono: ${c.telefono}` : ''}
-                       </SelectItem>
-                     ))}
-                   </SelectContent>
-                 </Select>
-               </div>
+                <div className="space-y-2">
+                  <Label>Seleccionar Cliente Existente</Label>
+                  <Input 
+                    placeholder="Buscar cliente por nombre, apellido o DPI..." 
+                    value={clienteSearch} 
+                    onChange={e => setClienteSearch(e.target.value)} 
+                    className="mb-2"
+                  />
+                  <Select value={selectedClienteId} onValueChange={setSelectedClienteId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleccione un cliente de la lista..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {clientes.filter(c => c.estado === 'activo' && (
+                        c.nombres.toLowerCase().includes(clienteSearch.toLowerCase()) || 
+                        c.apellidos.toLowerCase().includes(clienteSearch.toLowerCase()) || 
+                        (c.dpi && c.dpi.includes(clienteSearch))
+                      )).map(c => (
+                        <SelectItem key={c.id} value={String(c.id)}>
+                          {c.nombres} {c.apellidos} {c.nit ? `(NIT: ${c.nit})` : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
              </CardContent>
            </Card>
 
@@ -275,6 +301,7 @@ export function VentaForm({ loteId, ventaId }: VentaFormProps) {
                       <SelectItem value="EFECTIVO">Efectivo 💵</SelectItem>
                       <SelectItem value="TARJETA">Tarjeta 💳</SelectItem>
                       <SelectItem value="TRANSFERENCIA">Transferencia 🏦</SelectItem>
+                      <SelectItem value="DEPOSITO">Depósito 📥</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -343,7 +370,7 @@ export function VentaForm({ loteId, ventaId }: VentaFormProps) {
                         <span className="font-medium text-base text-white">
                           {descuento > 0 && (
                             <span className="line-through text-slate-500 mr-2 text-xs">
-                               Q {(incluirInstalacion ? parseFloat(lote.valor_total) : (parseFloat(lote.valor_total) - parseFloat(lote.costo_instalacion || "0"))).toLocaleString('es-GT', { minimumFractionDigits: 2 })}
+                               Q {(parseFloat(lote.valor_total) + (incluirInstalacion ? parseFloat(lote.costo_instalacion || "0") : 0)).toLocaleString('es-GT', { minimumFractionDigits: 2 })}
                             </span>
                           )}
                           Q {calculoBackend.valor_con_descuento.toLocaleString('es-GT', { minimumFractionDigits: 2 })}

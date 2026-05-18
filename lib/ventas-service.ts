@@ -7,6 +7,8 @@ export interface CalculoVentaPayload {
   tipo_pago: 'contado' | 'financiado'
   plazo_meses: number
   tasa_interes: number
+  acepta_instalacion?: boolean
+  costo_instalacion?: number
 }
 
 export interface CalculoVentaResponse {
@@ -31,7 +33,7 @@ export interface RegistrarVentaPayload {
   plazo_meses: number
   tasa_interes_anual: number
   acepta_instalacion: boolean
-  forma_pago: 'EFECTIVO' | 'TARJETA' | 'TRANSFERENCIA'
+  forma_pago: 'EFECTIVO' | 'TARJETA' | 'TRANSFERENCIA' | 'DEPOSITO'
 }
 
 export interface Venta {
@@ -49,6 +51,7 @@ export interface Venta {
   lote_identificador?: string
   lote_costo_instalacion?: string
   lote_valor_total?: string
+  lote_estado_disponibilidad?: string
   valor_lote: string
   enganche: string
   descuento: string
@@ -57,9 +60,10 @@ export interface Venta {
   total_pagar_contado: string
   comision_monto: string
   tipo_pago: 'CONTADO' | 'FINANCIADO'
-  forma_pago: 'EFECTIVO' | 'TARJETA' | 'TRANSFERENCIA'
+  forma_pago: 'EFECTIVO' | 'TARJETA' | 'TRANSFERENCIA' | 'DEPOSITO'
   acepta_instalacion: boolean
   plazo_meses: number
+  estado: 'GENERADA' | 'COMPLETADA' | 'CANCELADA'
   fecha_creacion: string
 }
 
@@ -87,11 +91,12 @@ export const ventasService = {
   },
 
   // Obtener historial de ventas con filtros
-  async getHistorialVentas(filters: { anio?: string; mes?: string; search?: string; lotificacion?: string; all?: boolean; page?: number }): Promise<{ count: number; results: Venta[] }> {
+  async getHistorialVentas(filters: { anio?: string; mes?: string; search?: string; lotificacion?: string; estado?: string; all?: boolean; page?: number }): Promise<{ count: number; results: Venta[] }> {
     const params = new URLSearchParams()
     if (filters.anio && filters.anio !== "all") params.append('anio', filters.anio)
     if (filters.mes && filters.mes !== "all") params.append('mes', filters.mes)
     if (filters.lotificacion) params.append('lotificacion', filters.lotificacion)
+    if (filters.estado && filters.estado !== "TODOS") params.append('estado', filters.estado)
     if (filters.search) params.append('search', filters.search)
     if (filters.all) params.append('all', 'true')
     if (filters.page) params.append('page', filters.page.toString())
@@ -112,11 +117,12 @@ export const ventasService = {
   },
 
   // Obtener resumen de ventas
-  async getResumenVentas(filters: { anio?: string; mes?: string; search?: string; lotificacion?: string; all?: boolean }): Promise<ResumenVentas> {
+  async getResumenVentas(filters: { anio?: string; mes?: string; search?: string; lotificacion?: string; estado?: string; all?: boolean }): Promise<ResumenVentas> {
     const params = new URLSearchParams()
     if (filters.anio && filters.anio !== "all") params.append('anio', filters.anio)
     if (filters.mes && filters.mes !== "all") params.append('mes', filters.mes)
     if (filters.lotificacion) params.append('lotificacion', filters.lotificacion)
+    if (filters.estado && filters.estado !== "TODOS") params.append('estado', filters.estado)
     if (filters.search) params.append('search', filters.search)
     if (filters.all) params.append('all', 'true')
 
@@ -136,10 +142,31 @@ export const ventasService = {
     })
   },
 
-  // Eliminar Venta
+  // Eliminar Venta (Carga estado CANCELADA)
   async eliminarVenta(ventaId: number): Promise<void> {
     return apiRequest<void>(`/ventas/${ventaId}/`, {
       method: 'DELETE',
+    })
+  },
+
+  // Restaurar una venta cancelada
+  async restaurarVenta(id: number): Promise<Venta> {
+    return apiRequest<Venta>(`/ventas/${id}/restaurar/`, {
+      method: 'POST'
+    })
+  },
+
+  // Eliminar permanentemente una venta cancelada
+  async eliminarPermanenteVenta(id: number): Promise<any> {
+    return apiRequest<any>(`/ventas/${id}/eliminar_permanente/`, {
+      method: 'POST'
+    })
+  },
+
+  // Escriturar un lote desde una venta completada
+  async escriturarVenta(id: number): Promise<any> {
+    return apiRequest<any>(`/ventas/${id}/escriturar/`, {
+      method: 'POST'
     })
   }
 }

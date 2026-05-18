@@ -57,10 +57,21 @@ export function Cotizaciones() {
   const [currentPageHistory, setCurrentPageHistory] = useState(1)
   const [totalItemsHistory, setTotalItemsHistory] = useState(0)
   const [historySearchTerm, setHistorySearchTerm] = useState("")
+  const [debouncedHistorySearchTerm, setDebouncedHistorySearchTerm] = useState("")
+  const [historyEstadoFilter, setHistoryEstadoFilter] = useState("PENDIENTE")
   const [isConverting, setIsConverting] = useState<number | null>(null)
+  const [isRechazando, setIsRechazando] = useState<number | null>(null)
+  const [isRestaurando, setIsRestaurando] = useState<number | null>(null)
 
   // Share Modal State
   const [isShareModalOpen, setIsShareModalOpen] = useState(false)
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedHistorySearchTerm(historySearchTerm)
+    }, 500)
+    return () => clearTimeout(timer)
+  }, [historySearchTerm])
   const [sharingCotizacion, setSharingCotizacion] = useState<Cotizacion | null>(null)
   const [filename, setFilename] = useState("")
   const [isExporting, setIsExporting] = useState(false)
@@ -148,7 +159,9 @@ export function Cotizaciones() {
     try {
       setIsLoadingHistory(true)
       const data = await cotizacionesService.getCotizaciones({
-        search: historySearchTerm,
+        search: debouncedHistorySearchTerm,
+        estado: historyEstadoFilter,
+        lotificacion: selectedLotificacion || "",
         all: activeTab === "gestion",
         page: page
       })
@@ -160,13 +173,13 @@ export function Cotizaciones() {
     } finally {
       setIsLoadingHistory(false)
     }
-  }, [historySearchTerm, activeTab])
+  }, [debouncedHistorySearchTerm, activeTab, historyEstadoFilter, selectedLotificacion])
 
   useEffect(() => {
     if (activeTab === "historial" || activeTab === "gestion") {
       loadHistory(1)
     }
-  }, [activeTab, loadHistory])
+  }, [activeTab, loadHistory, historyEstadoFilter, selectedLotificacion])
 
 
   const getEstadoBadge = (lote: LoteDisplay) => {
@@ -188,14 +201,30 @@ export function Cotizaciones() {
     router.push(`/cotizaciones/registrar/${lote.id}`)
   }
 
-  const handleEliminarCotizacion = async (id: number) => {
-    if (!confirm("¿Estás seguro de eliminar esta cotización?")) return
+  const handleRechazarCotizacion = async (id: number) => {
+    if (!confirm("¿Estás seguro de rechazar esta cotización? Pasará a estado RECHAZADA.")) return
+    setIsRechazando(id)
     try {
-      await cotizacionesService.eliminarCotizacion(id)
-      toast.success("Cotización eliminada")
+      await cotizacionesService.rechazarCotizacion(id)
+      toast.success("Cotización rechazada")
       loadHistory(currentPageHistory)
     } catch (err: any) {
-      toast.error("Error al eliminar")
+      toast.error("Error al rechazar")
+    } finally {
+      setIsRechazando(null)
+    }
+  }
+
+  const handleRestaurarCotizacion = async (id: number) => {
+    setIsRestaurando(id)
+    try {
+      await cotizacionesService.restaurarCotizacion(id)
+      toast.success("Cotización restaurada")
+      loadHistory(currentPageHistory)
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || "Error al restaurar")
+    } finally {
+      setIsRestaurando(null)
     }
   }
 
@@ -315,7 +344,19 @@ export function Cotizaciones() {
               <CardTitle>{isGlobal ? "Gestión de Cotizaciones" : "Mis Cotizaciones"}</CardTitle>
               <CardDescription>{isGlobal ? "Listado global de cotizaciones del sistema." : "Listado de prospectos e interesados atendidos."}</CardDescription>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-col md:flex-row items-center gap-2">
+              <Select value={historyEstadoFilter} onValueChange={setHistoryEstadoFilter}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Estado" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="TODOS">Todos los estados</SelectItem>
+                  <SelectItem value="PENDIENTE">Pendientes</SelectItem>
+                  <SelectItem value="ACEPTADA">Aceptadas</SelectItem>
+                  <SelectItem value="RECHAZADA">Rechazadas</SelectItem>
+                  <SelectItem value="VENCIDA">Vencidas</SelectItem>
+                </SelectContent>
+              </Select>
               <div className="relative">
                 <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input
@@ -343,15 +384,16 @@ export function Cotizaciones() {
               <div className="overflow-x-auto">
                 <Table>
                 <TableHeader className="bg-slate-50">
-                  <TableRow>
-                    <TableHead className="font-semibold">Interesado</TableHead>
-                    <TableHead className="font-semibold text-center">T. Pago</TableHead>
-                    <TableHead className="font-semibold">Lote</TableHead>
-                    <TableHead className="font-semibold text-center">Vencimiento</TableHead>
-                    <TableHead className="font-semibold text-right">Valor Promesa</TableHead>
-                    {isGlobal && <TableHead className="font-semibold">Vendedor</TableHead>}
-                    <TableHead className="font-semibold text-right">Acciones</TableHead>
-                  </TableRow>
+                    <TableRow>
+                      <TableHead className="font-semibold">Interesado</TableHead>
+                      <TableHead className="font-semibold text-center">Estado</TableHead>
+                      <TableHead className="font-semibold text-center">T. Pago</TableHead>
+                      <TableHead className="font-semibold">Lote</TableHead>
+                      <TableHead className="font-semibold text-center">Vencimiento</TableHead>
+                      <TableHead className="font-semibold text-right">Valor Promesa</TableHead>
+                      {isGlobal && <TableHead className="font-semibold">Vendedor</TableHead>}
+                      <TableHead className="font-semibold text-right">Acciones</TableHead>
+                    </TableRow>
                 </TableHeader>
                 <TableBody>
                   {Array.isArray(cotizacionesHistory) && cotizacionesHistory.map((c) => {
@@ -365,6 +407,19 @@ export function Cotizaciones() {
                         </div>
                       </TableCell>
                       <TableCell className="text-center">
+                        {(() => {
+                           const isExpired = new Date(c.fecha_vencimiento) < new Date(new Date().setHours(0,0,0,0))
+                           const effectiveEstado = (c.estado === 'PENDIENTE' && isExpired) ? 'VENCIDA' : c.estado
+                           
+                           switch(effectiveEstado) {
+                             case 'ACEPTADA': return <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100 border-emerald-200">Aceptada</Badge>
+                             case 'RECHAZADA': return <Badge className="bg-rose-100 text-rose-700 hover:bg-rose-100 border-rose-200">Rechazada</Badge>
+                             case 'VENCIDA': return <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100 border-amber-200">Vencida</Badge>
+                             default: return <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100 border-blue-200">Pendiente</Badge>
+                           }
+                        })()}
+                      </TableCell>
+                      <TableCell className="text-center">
                         <Badge variant="outline" className="rounded-full px-3 bg-slate-100">
                           {c.tipo_pago}
                         </Badge>
@@ -376,7 +431,7 @@ export function Cotizaciones() {
                         </div>
                       </TableCell>
                       <TableCell className="text-center">
-                        <Badge variant={isExpired ? "destructive" : "secondary"}>
+                        <Badge variant={new Date(c.fecha_vencimiento) < new Date(new Date().setHours(0,0,0,0)) ? "destructive" : "secondary"}>
                           <CalendarIcon className="w-3 h-3 mr-1"/>
                           {new Date(c.fecha_vencimiento).toLocaleDateString()}
                         </Badge>
@@ -387,24 +442,59 @@ export function Cotizaciones() {
                       {isGlobal && <TableCell className="text-xs">{c.vendedor_nombre}</TableCell>}
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
-                          <Button 
-                            variant="default" 
-                            size="sm" 
-                            onClick={() => handleConvertirAVenta(c)}
-                            disabled={isExpired || isConverting === c.id}
-                            className="bg-emerald-600 hover:bg-emerald-700 h-8 px-3"
-                          >
-                            {isConverting === c.id ? <Loader2 className="w-4 h-4 animate-spin"/> : <Check className="w-4 h-4 mr-1" />}
-                            Vender
-                          </Button>
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            onClick={() => router.push(`/cotizaciones/editar/${c.id}`)}
-                            className="text-primary hover:bg-primary/10 h-8 px-2"
-                          >
-                            Editar
-                          </Button>
+                          {(() => {
+                            const isExpired = new Date(c.fecha_vencimiento) < new Date(new Date().setHours(0,0,0,0))
+                            const effectiveEstado = (c.estado === 'PENDIENTE' && isExpired) ? 'VENCIDA' : c.estado
+
+                            if (effectiveEstado === 'RECHAZADA') {
+                              return (
+                                <Button 
+                                  variant="outline" 
+                                  size="sm" 
+                                  onClick={() => handleRestaurarCotizacion(c.id)}
+                                  disabled={isRestaurando === c.id}
+                                  className="h-8 border-amber-200 text-amber-700 hover:bg-amber-50"
+                                >
+                                  {isRestaurando === c.id ? <Loader2 className="w-4 h-4 animate-spin"/> : <History className="w-4 h-4 mr-1" />}
+                                  Restaurar
+                                </Button>
+                              )
+                            }
+
+                            return (
+                              <>
+                                <Button 
+                                  variant="default" 
+                                  size="sm" 
+                                  onClick={() => handleConvertirAVenta(c)}
+                                  disabled={effectiveEstado !== 'PENDIENTE' || isConverting === c.id}
+                                  className="bg-emerald-600 hover:bg-emerald-700 h-8 px-3"
+                                >
+                                  {isConverting === c.id ? <Loader2 className="w-4 h-4 animate-spin"/> : <Check className="w-4 h-4 mr-1" />}
+                                  Vender
+                                </Button>
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm" 
+                                  onClick={() => router.push(`/cotizaciones/editar/${c.id}`)}
+                                  disabled={effectiveEstado === 'ACEPTADA'}
+                                  className="text-primary hover:bg-primary/10 h-8 px-2"
+                                >
+                                  Editar
+                                </Button>
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm" 
+                                  onClick={() => handleRechazarCotizacion(c.id)}
+                                  disabled={effectiveEstado === 'ACEPTADA' || effectiveEstado === 'RECHAZADA' || isRechazando === c.id}
+                                  className="text-red-600 hover:bg-red-50 h-8 px-2"
+                                  title="Rechazar"
+                                >
+                                  {isRechazando === c.id ? <Loader2 className="w-4 h-4 animate-spin"/> : "Borrar"}
+                                </Button>
+                              </>
+                            )
+                          })()}
                           <Button 
                             variant="ghost" 
                             size="sm" 
@@ -413,16 +503,6 @@ export function Cotizaciones() {
                             title="Compartir"
                           >
                             <Share className="w-4 h-4" />
-                          </Button>
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            onClick={() => handleEliminarCotizacion(c.id)}
-                            className="text-red-600 hover:bg-red-50 h-8 px-2"
-                            title="Borrar"
-                          >
-                            <ShoppingCart className="w-4 h-4 hidden" /> {/* Hidden hack for spacing if needed */}
-                            Borrar
                           </Button>
                         </div>
                       </TableCell>

@@ -82,18 +82,26 @@ export function Ventas() {
   const [isSubmittingVenta, setIsSubmittingVenta] = useState(false)
   const [calculoBackend, setCalculoBackend] = useState<CalculoVentaResponse | null>(null)
   const [isLoadingCalculo, setIsLoadingCalculo] = useState(false)
-  
-  // -- History State --
   const { user } = useAuth()
   const [activeTab, setActiveTab] = useState("venta")
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false)
   const [ventasHistory, setVentasHistory] = useState<Venta[]>([])
   const [resumenVentas, setResumenVentas] = useState<ResumenVentas | null>(null)
-  const [isLoadingHistory, setIsLoadingHistory] = useState(false)
+
+  const [historySearchTerm, setHistorySearchTerm] = useState("")
+  const [debouncedHistorySearchTerm, setDebouncedHistorySearchTerm] = useState("")
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedHistorySearchTerm(historySearchTerm)
+    }, 500)
+    return () => clearTimeout(timer)
+  }, [historySearchTerm])
   const [historyFilters, setHistoryFilters] = useState({
     anio: new Date().getFullYear().toString(),
     mes: (new Date().getMonth() + 1).toString(),
-    search: "",
-    lotificacion: selectedLotificacion?.toString() || ""
+    lotificacion: selectedLotificacion?.toString() || "",
+    estado: "ACTIVAS"
   })
   // ------------------------------------
 
@@ -295,6 +303,7 @@ export function Ventas() {
       setIsLoadingHistory(true)
       const data = await ventasService.getHistorialVentas({
         ...historyFilters,
+        search: debouncedHistorySearchTerm,
         all: activeTab === "gestion",
         page: page
       })
@@ -304,6 +313,7 @@ export function Ventas() {
 
       const resumen = await ventasService.getResumenVentas({
         ...historyFilters,
+        search: debouncedHistorySearchTerm,
         all: activeTab === "gestion"
       })
       setResumenVentas(resumen)
@@ -313,24 +323,62 @@ export function Ventas() {
     } finally {
       setIsLoadingHistory(false)
     }
-  }, [historyFilters, activeTab])
+  }, [historyFilters, debouncedHistorySearchTerm, activeTab])
 
   useEffect(() => {
     if (activeTab === "historial" || activeTab === "gestion") {
       loadHistory(1)
     }
-  }, [activeTab, loadHistory])
+  }, [activeTab, loadHistory, historyFilters.estado])
 
   const handleEliminarVenta = async (id: number) => {
-    if (!confirm("¿Estás seguro de eliminar esta venta? El lote volverá a estar disponible de forma automática y se eliminará el financiamiento asociado.")) return
+    if (!confirm("¿Deseas cancelar esta venta? Esta acción borrará por completo los registros de cuentas por cobrar y servicios asociados a la venta, y el lote volverá a estar disponible.")) return
     
     try {
       await ventasService.eliminarVenta(id)
-      toast.success("Venta eliminada exitosamente")
+      toast.success("Venta cancelada exitosamente")
       loadHistory()
       loadLotesParaVenta()
     } catch (err: any) {
-      toast.error("Error al eliminar la venta: " + (err.message || "Servidor no respondió"))
+      toast.error("Error al cancelar la venta: " + (err.message || "Servidor no respondió"))
+    }
+  }
+
+  const handleRestaurarVenta = async (id: number) => {
+    try {
+      await ventasService.restaurarVenta(id)
+      toast.success("Venta restaurada exitosamente")
+      loadHistory()
+      loadLotesParaVenta()
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.error || err.message || "Error al restaurar"
+      toast.error("No se pudo restaurar: " + errorMsg)
+    }
+  }
+
+  const handleEliminarPermanenteVenta = async (id: number) => {
+    if (!confirm("¿ESTÁS COMPLETAMENTE SEGURO? Esta acción eliminará el registro de la venta permanentemente de la base de datos y no se podrá recuperar.")) return
+    
+    try {
+      await ventasService.eliminarPermanenteVenta(id)
+      toast.success("Registro eliminado permanentemente")
+      loadHistory()
+    } catch (err: any) {
+      toast.error("Error al eliminar permanentemente: " + (err.message || "Servidor no respondió"))
+    }
+  }
+
+  const handleEscriturarVenta = async (id: number) => {
+    if (!confirm("¿Estás seguro de que deseas escriturar este lote? Esto marcará el lote como ESCRITURADO y no se podrá revertir fácilmente.")) return
+    
+    try {
+      await ventasService.escriturarVenta(id)
+      toast.success("Lote escriturado exitosamente")
+      loadHistory()
+      loadLotesParaVenta()
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.error || err.message || "Error al escriturar"
+      toast.error("No se pudo escriturar: " + errorMsg)
     }
   }
 
@@ -341,7 +389,7 @@ export function Ventas() {
 
     return (
     <>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className={`grid grid-cols-1 ${isGlobal ? 'md:grid-cols-2' : 'md:grid-cols-3'} gap-4`}>
         <Card className="bg-gradient-to-br from-indigo-500 to-indigo-600 text-white border-none shadow-md">
           <CardContent className="flex items-center gap-4 p-6">
             <div className="p-3 bg-white/20 rounded-full">
@@ -354,17 +402,19 @@ export function Ventas() {
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-emerald-500 to-emerald-600 text-white border-none shadow-md">
-          <CardContent className="flex items-center gap-4 p-6">
-            <div className="p-3 bg-white/20 rounded-full">
-              <DollarSign className="h-6 w-6" />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-emerald-100 opacity-90">Total Comisiones</p>
-              <h3 className="text-2xl font-bold">Q {resumenVentas?.total_comisiones.toLocaleString('es-GT', { minimumFractionDigits: 2 }) || '0.00'}</h3>
-            </div>
-          </CardContent>
-        </Card>
+        {!isGlobal && (
+          <Card className="bg-gradient-to-br from-emerald-500 to-emerald-600 text-white border-none shadow-md">
+            <CardContent className="flex items-center gap-4 p-6">
+              <div className="p-3 bg-white/20 rounded-full">
+                <DollarSign className="h-6 w-6" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-emerald-100 opacity-90">Total Comisiones</p>
+                <h3 className="text-2xl font-bold">Q {resumenVentas?.total_comisiones.toLocaleString('es-GT', { minimumFractionDigits: 2 }) || '0.00'}</h3>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white border-none shadow-md">
           <CardContent className="flex items-center gap-4 p-6">
@@ -409,12 +459,25 @@ export function Ventas() {
                   </SelectContent>
                 </Select>
               </div>
+              <div className="w-[140px]">
+                <Select value={historyFilters.estado} onValueChange={(v) => setHistoryFilters(prev => ({ ...prev, estado: v }))}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Estado" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ACTIVAS">Activas (Comp. y Gen.)</SelectItem>
+                    <SelectItem value="GENERADA">Generada</SelectItem>
+                    <SelectItem value="COMPLETADA">Completada</SelectItem>
+                    <SelectItem value="CANCELADA">Cancelada</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="relative">
                 <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input
                   placeholder="Cliente o lote..."
-                  value={historyFilters.search}
-                  onChange={(e) => setHistoryFilters(prev => ({ ...prev, search: e.target.value }))}
+                  value={historySearchTerm}
+                  onChange={(e) => setHistorySearchTerm(e.target.value)}
                   className="pl-8 w-full md:w-[200px]"
                 />
               </div>
@@ -435,27 +498,40 @@ export function Ventas() {
             <div className="rounded-md border overflow-hidden">
               <Table>
                 <TableHeader className="bg-slate-50">
-                  <TableRow>
-                    <TableHead className="font-semibold">Cliente</TableHead>
-                    <TableHead className="font-semibold text-center">Tipo de Pago</TableHead>
-                    <TableHead className="font-semibold">Vendedor</TableHead>
-                    <TableHead className="font-semibold">Lote / Manzana</TableHead>
-                    <TableHead className="font-semibold">Fecha</TableHead>
-                    <TableHead className="font-semibold text-right">Valor Venta</TableHead>
-                    <TableHead className="font-semibold text-right">Acciones</TableHead>
-                  </TableRow>
+                    <TableRow>
+                      <TableHead className="font-semibold">Cliente</TableHead>
+                      <TableHead className="font-semibold text-center">Estado</TableHead>
+                      <TableHead className="font-semibold text-center">Tipo de Pago</TableHead>
+                      <TableHead className="font-semibold">Vendedor</TableHead>
+                      <TableHead className="font-semibold text-center">Lote / Manzana</TableHead>
+                      <TableHead className="font-semibold">Fecha</TableHead>
+                      <TableHead className="font-semibold text-right">Valor Venta</TableHead>
+                      <TableHead className="font-semibold text-right">Acciones</TableHead>
+                    </TableRow>
                 </TableHeader>
                 <TableBody>
                   {Array.isArray(ventasHistory) && ventasHistory.map((v) => (
                     <TableRow key={v.id} className="hover:bg-slate-50/50 transition-colors">
                       <TableCell className="font-medium text-slate-900">{v.cliente_nombre}</TableCell>
                       <TableCell className="text-center">
+                        <Badge 
+                          variant="outline" 
+                          className={`rounded-full px-3 font-semibold ${
+                            v.estado === 'COMPLETADA' ? 'bg-emerald-100 text-emerald-800 border-emerald-200' :
+                            v.estado === 'GENERADA' ? 'bg-blue-100 text-blue-800 border-blue-200' :
+                            'bg-red-100 text-red-800 border-red-200'
+                          }`}
+                        >
+                          {v.estado}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-center">
                         <Badge variant={v.tipo_pago === 'CONTADO' ? 'default' : 'secondary'} className="rounded-full px-3">
                           {v.tipo_pago}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-xs">{isGlobal ? v.vendedor_nombre : "Yo"}</TableCell>
-                      <TableCell>
+                      <TableCell className="text-center">
                         <div className="flex flex-col">
                           <span className="font-semibold">Lote {v.lote_numero}</span>
                           <span className="text-xs text-muted-foreground">{v.lote_manzana}</span>
@@ -473,7 +549,7 @@ export function Ventas() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
-                          {isGlobal && (
+                          {v.estado !== 'CANCELADA' ? (
                             <>
                               <Button 
                                 variant="ghost" 
@@ -489,11 +565,39 @@ export function Ventas() {
                                 onClick={() => handleEliminarVenta(v.id)}
                                 className="text-red-600 hover:text-red-700 hover:bg-red-50 h-8 px-2"
                               >
-                                Eliminar
+                                Cancelar
+                              </Button>
+                              {v.estado === 'COMPLETADA' && v.lote_estado_disponibilidad !== 'escriturado' && (
+                                <Button 
+                                  variant="outline" 
+                                  size="sm" 
+                                  onClick={() => handleEscriturarVenta(v.id)}
+                                  className="text-purple-600 border-purple-200 hover:bg-purple-50 h-8 px-2"
+                                >
+                                  Escriturar
+                                </Button>
+                              )}
+                            </>
+                          ) : (
+                            <>
+                              <Button 
+                                variant="outline" 
+                                size="sm" 
+                                onClick={() => handleRestaurarVenta(v.id)}
+                                className="text-emerald-600 border-emerald-200 hover:bg-emerald-50 h-8 px-2"
+                              >
+                                Restaurar
+                              </Button>
+                              <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                onClick={() => handleEliminarPermanenteVenta(v.id)}
+                                className="text-slate-500 hover:text-red-600 hover:bg-red-50 h-8 px-2"
+                              >
+                                Eliminar Registro
                               </Button>
                             </>
                           )}
-                          {!isGlobal && <span className="text-xs text-muted-foreground italic">Solo ver</span>}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -572,8 +676,14 @@ export function Ventas() {
             <div className="flex-1">
               <Label htmlFor="lotificacion">Lotificación</Label>
               <Select
-                value={selectedLotificacion?.toString() || ""}
-                onValueChange={(value) => setSelectedLotificacion(Number.parseInt(value))}
+                value={selectedLotificacion?.toString() || "all"}
+                onValueChange={(value) => {
+                   if (value === "all") {
+                      setSelectedLotificacion(null)
+                   } else {
+                      setSelectedLotificacion(Number.parseInt(value))
+                   }
+                }}
               >
                 <SelectTrigger id="lotificacion">
                   <SelectValue placeholder="Selecciona una lotificación" />

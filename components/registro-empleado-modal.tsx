@@ -25,6 +25,7 @@ interface FormData {
   username?: string
   password?: string
   confirm_password?: string
+  estado?: boolean
 }
 
 interface RegistroEmpleadoModalProps {
@@ -46,7 +47,8 @@ export function RegistroEmpleadoModal({ onCreated }: RegistroEmpleadoModalProps)
     porcentaje_comision: '',
     username: '',
     password: '',
-    confirm_password: ''
+    confirm_password: '',
+    estado: true
   })
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
@@ -104,7 +106,7 @@ export function RegistroEmpleadoModal({ onCreated }: RegistroEmpleadoModalProps)
     setFormData({
       nombre: '', apellido: '', telefono: '', correo: '', dpi: '',
       direccion: '', fecha_contratacion: '', rol: '', porcentaje_comision: '',
-      username: '', password: '', confirm_password: ''
+      username: '', password: '', confirm_password: '', estado: true
     })
     setError(null)
     setSuccess(null)
@@ -226,6 +228,25 @@ export function RegistroEmpleadoModal({ onCreated }: RegistroEmpleadoModalProps)
                       {r.name}
                     </SelectItem>
                   ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="estado" className="flex items-center gap-2 text-sm font-semibold">
+                <CheckCircle className="h-4 w-4 text-slate-500" />
+                Estado *
+              </Label>
+              <Select
+                value={formData.estado !== undefined ? String(formData.estado) : "true"}
+                onValueChange={(v) => setFormData((f) => ({ ...f, estado: v === "true" }))}
+              >
+                <SelectTrigger className={inputClasses}>
+                  <SelectValue placeholder="Seleccionar estado" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="true">Activo</SelectItem>
+                  <SelectItem value="false">Inactivo</SelectItem>
                 </SelectContent>
               </Select>
             </div>

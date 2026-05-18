@@ -6,14 +6,17 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { CheckCircle, XCircle, Loader2 } from "lucide-react"
+import { XCircle, Loader2 } from "lucide-react"
 import { actualizarCliente, Cliente } from "@/lib/clientes-service"
+import { toast } from "sonner"
 
 // Dependencias y Mocks borrados. Ahora usando datos reales.
 
 interface FormData {
   nombres: string
   apellidos: string
+  dpi: string
+  nit: string
   telefono: string
   email: string
   direccion: string
@@ -31,14 +34,16 @@ export function EditarClienteModal({ cliente, isOpen, onClose, onClienteActualiz
   const [formData, setFormData] = useState<FormData>({
     nombres: '',
     apellidos: '',
+    dpi: '',
+    nit: '',
     telefono: '',
     email: '',
     direccion: '',
     estado: 'activo'
   })
-  const [error, setError] = useState<string | null>(null)
-  const [success, setSuccess] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [warningOpen, setWarningOpen] = useState(false)
+  const [warningMsg, setWarningMsg] = useState('')
 
 
 
@@ -47,6 +52,8 @@ export function EditarClienteModal({ cliente, isOpen, onClose, onClienteActualiz
       setFormData({
         nombres: cliente.nombres,
         apellidos: cliente.apellidos,
+        dpi: cliente.dpi || '',
+        nit: cliente.nit || '',
         telefono: cliente.telefono || '',
         email: cliente.email || '',
         direccion: cliente.direccion,
@@ -68,26 +75,21 @@ export function EditarClienteModal({ cliente, isOpen, onClose, onClienteActualiz
     e.preventDefault()
     if (!cliente) return
 
-    setError(null)
-    setSuccess(null)
-
     // Validaciones básicas
-    if (!formData.nombres.trim() || !formData.apellidos.trim() || !formData.direccion.trim()) {
-      setError('Los campos Nombres, Apellidos y Dirección son obligatorios')
+    if (!formData.nombres.trim() || !formData.apellidos.trim() || !formData.dpi.trim() || !formData.nit.trim() || !formData.direccion.trim()) {
+      setWarningMsg('Los campos Nombres, Apellidos, DPI, NIT y Dirección son obligatorios')
+      setWarningOpen(true)
       return
     }
 
     setIsSubmitting(true)
     try {
       await actualizarCliente(cliente.id, formData)
-      setSuccess('Cliente actualizado exitosamente')
+      toast.success('Cliente actualizado exitosamente')
       onClienteActualizado()
-      setTimeout(() => {
-        onClose()
-        setSuccess(null)
-      }, 2000)
+      onClose()
     } catch (err) {
-      setError('Error al actualizar el cliente. Inténtalo de nuevo.')
+      toast.error('Error al actualizar el cliente. Inténtalo de nuevo.')
     } finally {
       setIsSubmitting(false)
     }
@@ -101,19 +103,6 @@ export function EditarClienteModal({ cliente, isOpen, onClose, onClienteActualiz
           <DialogDescription>Modifique los datos del cliente.</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
-          {error && (
-            <Alert variant="destructive">
-              <XCircle className="h-4 w-4" />
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
-
-          {success && (
-            <Alert>
-              <CheckCircle className="h-4 w-4" />
-              <AlertDescription>{success}</AlertDescription>
-            </Alert>
-          )}
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
@@ -135,6 +124,32 @@ export function EditarClienteModal({ cliente, isOpen, onClose, onClienteActualiz
                 name="apellidos"
                 type="text"
                 value={formData.apellidos}
+                onChange={handleChange}
+                required
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="dpi">DPI *</Label>
+              <Input
+                id="dpi"
+                name="dpi"
+                type="text"
+                value={formData.dpi}
+                onChange={handleChange}
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="nit">NIT *</Label>
+              <Input
+                id="nit"
+                name="nit"
+                type="text"
+                value={formData.nit}
                 onChange={handleChange}
                 required
               />
@@ -214,6 +229,26 @@ export function EditarClienteModal({ cliente, isOpen, onClose, onClienteActualiz
           </div>
         </form>
       </DialogContent>
+
+      <Dialog open={warningOpen} onOpenChange={setWarningOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-amber-600">
+              <XCircle className="h-5 w-5" />
+              Campos Incompletos
+            </DialogTitle>
+            <DialogDescription>
+              Faltan campos obligatorios para guardar el cliente.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4 text-slate-700">
+            {warningMsg}
+          </div>
+          <div className="flex justify-end pt-4">
+            <Button onClick={() => setWarningOpen(false)}>Cerrar</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   )
 }

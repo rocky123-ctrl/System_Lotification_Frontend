@@ -52,7 +52,7 @@ class ApiError extends Error {
 }
 
 // Instancia de Axios
-const apiInstance = axios.create({
+export const apiInstance = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
@@ -79,6 +79,8 @@ apiInstance.interceptors.request.use(
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`
     }
+    // Debug log to trace 401 errors
+    console.log(`[API] ${config.method?.toUpperCase()} ${config.url} - Auth: ${config.headers?.Authorization ? 'Yes' : 'No'}`)
     return config
   },
   (error) => Promise.reject(error)
@@ -110,51 +112,59 @@ apiInstance.interceptors.response.use(
     }
 
     // 2. Manejo de Expiración de Token - Silent Refresh
-    if (response.status === 401 && !originalRequest._retry) {
-      if (isRefreshing) {
-        return new Promise((resolve) => {
-          subscribeTokenRefresh((token: string) => {
-            if (originalRequest.headers) {
-              originalRequest.headers.Authorization = `Bearer ${token}`
-            }
-            resolve(apiInstance(originalRequest))
+    // Solo intentamos refresh si no es la propia ruta de login
+    const isLoginRequest = config?.url?.includes('/auth/login/')
+    
+    if (response.status === 401 && !isLoginRequest) {
+      if (!originalRequest._retry) {
+        if (isRefreshing) {
+          return new Promise((resolve) => {
+            subscribeTokenRefresh((token: string) => {
+              if (originalRequest.headers) {
+                originalRequest.headers.Authorization = `Bearer ${token}`
+              }
+              resolve(apiInstance(originalRequest))
+            })
           })
-        })
-      }
-
-      originalRequest._retry = true
-      isRefreshing = true
-
-      try {
-        console.log('[API] Token expirado, intentando silent refresh...')
-        const refreshToken = sessionStorage.getItem(appConfig.auth.refreshTokenKey)
-        
-        if (!refreshToken) throw new Error('No refresh token')
-
-        const res = await axios.post(`${API_BASE_URL}/auth/token/refresh/`, {
-          refresh: refreshToken
-        })
-
-        const newAccessToken = res.data.access
-        // Gracias a ROTATE_REFRESH_TOKENS = True, el backend suele devolver un nuevo Refresh también
-        if (res.data.refresh) {
-          sessionStorage.setItem(appConfig.auth.refreshTokenKey, res.data.refresh)
         }
-        sessionStorage.setItem(appConfig.auth.tokenKey, newAccessToken)
 
-        onTokenRefreshed(newAccessToken)
-        isRefreshing = false
+        originalRequest._retry = true
+        isRefreshing = true
 
-        if (originalRequest.headers) {
-          originalRequest.headers.Authorization = `Bearer ${newAccessToken}`
+        try {
+          console.log('[API] Token expirado, intentando silent refresh...')
+          const refreshToken = sessionStorage.getItem(appConfig.auth.refreshTokenKey)
+          
+          if (!refreshToken) throw new Error('No refresh token')
+
+          const res = await axios.post(`${API_BASE_URL}/auth/token/refresh/`, {
+            refresh: refreshToken
+          })
+
+          const newAccessToken = res.data.access
+          if (res.data.refresh) {
+            sessionStorage.setItem(appConfig.auth.refreshTokenKey, res.data.refresh)
+          }
+          sessionStorage.setItem(appConfig.auth.tokenKey, newAccessToken)
+
+          onTokenRefreshed(newAccessToken)
+          isRefreshing = false
+
+          if (originalRequest.headers) {
+            originalRequest.headers.Authorization = `Bearer ${newAccessToken}`
+          }
+          return apiInstance(originalRequest)
+        } catch (refreshError) {
+          isRefreshing = false
+          refreshSubscribers = []
+          console.error('[API] Fallo el refresco de token:', refreshError)
+          redirectToLogin('session_expired')
+          return Promise.reject(new ApiError('Sesión expirada', 401, refreshError))
         }
-        return apiInstance(originalRequest)
-      } catch (refreshError) {
-        isRefreshing = false
-        refreshSubscribers = []
-        console.error('[API] Fallo el refresco de token:', refreshError)
+      } else {
+        // Si ya era un reintento y sigue dando 401, redirigimos
+        console.error('[API] Error 401 persistente después de reintento.')
         redirectToLogin('session_expired')
-        return Promise.reject(new ApiError('Sesión expirada', 401, refreshError))
       }
     }
 
@@ -176,11 +186,14 @@ export async function apiRequest<T>(
   try {
     const isPostOrPut = options.method === 'POST' || options.method === 'PUT' || options.method === 'PATCH'
     
-    const axiosConfig = {
+    const axiosConfig: any = {
       url: endpoint,
       method: (options.method || 'GET').toLowerCase(),
       data: isPostOrPut && typeof options.body === 'string' ? JSON.parse(options.body) : options.body,
-      headers: options.headers as any,
+    }
+
+    if (options.headers) {
+      axiosConfig.headers = options.headers
     }
 
     const response = await apiInstance.request(axiosConfig)

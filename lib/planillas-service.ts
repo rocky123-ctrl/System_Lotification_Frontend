@@ -28,7 +28,18 @@ export interface PlanillasFilters {
   mes?: string
   search?: string
   estado?: 'PENDIENTE' | 'PAGADO'
+  vendedor?: string
   page?: number
+}
+
+export interface ResumenVendedor {
+  vendedor_id: number
+  vendedor_nombre: string
+  total_comisiones: number
+  monto_pendiente: number
+  monto_pagado: number
+  cantidad_ventas: number
+  cantidad_pendientes: number
 }
 
 export const planillasService = {
@@ -39,9 +50,19 @@ export const planillasService = {
     if (filters.mes && filters.mes !== "all") params.append('mes', filters.mes)
     if (filters.estado && filters.estado !== "all") params.append('estado', filters.estado)
     if (filters.search) params.append('search', filters.search)
+    if (filters.vendedor) params.append('vendedor', filters.vendedor)
     if (filters.page) params.append('page', filters.page.toString())
 
     return apiRequest<LiquidacionesResponse>(`/ventas/liquidaciones/?${params.toString()}`)
+  },
+
+  // Obtener resumen de comisiones agrupadas por vendedor
+  async getResumenVendedores(anio: string, mes: string): Promise<ResumenVendedor[]> {
+    const params = new URLSearchParams()
+    if (anio && anio !== "all") params.append('anio', anio)
+    if (mes && mes !== "all") params.append('mes', mes)
+    
+    return apiRequest<ResumenVendedor[]>(`/ventas/liquidaciones/resumen_por_vendedor/?${params.toString()}`)
   },
 
   // Registrar el pago de una liquidación
@@ -52,6 +73,14 @@ export const planillasService = {
     })
   },
 
+  // Registrar el pago masivo de liquidaciones
+  async pagarLiquidacionesMultiples(ids: number[], referencia_pago?: string): Promise<{ mensaje: string }> {
+    return apiRequest<{ mensaje: string }>(`/ventas/liquidaciones/pagar_multiples/`, {
+      method: 'POST',
+      body: JSON.stringify({ ids, referencia_pago }),
+    })
+  },
+
   // Descargar el Excel de planillas
   async exportarExcel(filters: PlanillasFilters): Promise<Blob> {
     const params = new URLSearchParams()
@@ -59,6 +88,7 @@ export const planillasService = {
     if (filters.mes && filters.mes !== "all") params.append('mes', filters.mes)
     if (filters.estado && filters.estado !== "all") params.append('estado', filters.estado)
     if (filters.search) params.append('search', filters.search)
+    if (filters.vendedor) params.append('vendedor', filters.vendedor)
 
     const token = await refreshTokenIfNeeded()
     const response = await fetch(`${config.api.baseUrl}/api/ventas/liquidaciones/exportar_excel/?${params.toString()}`, {

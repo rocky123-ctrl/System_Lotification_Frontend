@@ -24,6 +24,7 @@ interface FormData {
   username?: string
   password?: string
   confirm_password?: string
+  estado?: boolean
 }
 
 interface EditarEmpleadoModalProps {
@@ -46,7 +47,8 @@ export function EditarEmpleadoModal({ empleado, isOpen, onClose, onUpdated }: Ed
     porcentaje_comision: '',
     username: '',
     password: '',
-    confirm_password: ''
+    confirm_password: '',
+    estado: true
   })
   const [showPasswordFields, setShowPasswordFields] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
@@ -75,7 +77,8 @@ export function EditarEmpleadoModal({ empleado, isOpen, onClose, onUpdated }: Ed
         porcentaje_comision: empleado.porcentaje_comision || '',
         username: empleado.username || '',
         password: '',
-        confirm_password: ''
+        confirm_password: '',
+        estado: empleado.estado !== undefined ? empleado.estado : true
       })
       setShowPasswordFields(false)
     }
@@ -238,6 +241,25 @@ export function EditarEmpleadoModal({ empleado, isOpen, onClose, onUpdated }: Ed
                       {r.name}
                     </SelectItem>
                   ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="estado" className="flex items-center gap-2 text-sm font-semibold">
+                <CheckCircle className="h-4 w-4 text-slate-500" />
+                Estado *
+              </Label>
+              <Select
+                value={formData.estado !== undefined ? String(formData.estado) : "true"}
+                onValueChange={(v) => setFormData((f) => ({ ...f, estado: v === "true" }))}
+              >
+                <SelectTrigger className={inputClasses}>
+                  <SelectValue placeholder="Seleccionar estado" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="true">Activo</SelectItem>
+                  <SelectItem value="false">Inactivo</SelectItem>
                 </SelectContent>
               </Select>
             </div>

@@ -153,7 +153,7 @@ export const lotificacionService = {
       })
       console.log('[lotificacionService] Lotificación eliminada exitosamente:', id)
     } catch (error: any) {
-      console.error('[lotificacionService] Error eliminando lotificación:', error)
+      // Se omite el console.error para no saturar la consola en caso de errores de integridad (e.g., 500 por datos relacionados)
       throw error
     }
   },
@@ -198,6 +198,13 @@ export const lotificacionService = {
       body: JSON.stringify(payload),
     })
     return { id: res.id, nombre: res.nombre ?? '', activo: res.activo !== false }
+  },
+
+  /** Eliminar manzana. */
+  async deleteManzana(id: number): Promise<void> {
+    await apiRequest<void>(`/lotes/manzanas/${id}/`, {
+      method: 'DELETE',
+    })
   },
 
   /** SVG del plano como texto (GET /api/lotes/lotificaciones/{id}/plano-svg/). Para plano interactivo. */

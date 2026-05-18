@@ -4,6 +4,7 @@ import { DM_Sans } from "next/font/google"
 import "./globals.css"
 import { AuthProvider } from "@/contexts/auth-context"
 import { ConfiguracionProvider } from "@/hooks/use-configuracion"
+import { Toaster } from "@/components/ui/sonner"
 
 
 const dmSans = DM_Sans({
@@ -29,6 +30,7 @@ export default function RootLayout({
         <AuthProvider>
           <ConfiguracionProvider>
             {children}
+            <Toaster />
           </ConfiguracionProvider>
         </AuthProvider>
       </body>

@@ -118,6 +118,14 @@ export default function LoginForm() {
               </Alert>
             )}
 
+            {reason === 'session_expired' && !error && (
+              <Alert className="border-red-200 bg-red-50">
+                <AlertDescription className="text-red-700">
+                  Su sesión ha expirado. Por favor, inicie sesión nuevamente.
+                </AlertDescription>
+              </Alert>
+            )}
+
             <Button
               type="submit"
               className="w-full bg-primary hover:bg-primary/90 text-white font-medium py-2.5"

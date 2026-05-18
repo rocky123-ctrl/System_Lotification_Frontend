@@ -23,8 +23,12 @@ export const getClientesStats = async (): Promise<ClientesStats> => {
   return apiRequest<ClientesStats>('/clientes/stats/')
 }
 
-export const getClientes = async (page: number = 1, limit: number = 10): Promise<{ clientes: Cliente[], total: number, pages: number }> => {
-  const response = await apiRequest<any>(`/clientes/?page=${page}&limit=${limit}`)
+export const getClientes = async (page: number = 1, limit: number = 10, search?: string, estado: string = 'activo'): Promise<{ clientes: Cliente[], total: number, pages: number }> => {
+  let url = `/clientes/?page=${page}&page_size=${limit}`;
+  if (search) url += `&search=${encodeURIComponent(search)}`;
+  if (estado && estado !== 'todos') url += `&estado=${estado}`;
+  
+  const response = await apiRequest<any>(url)
   return {
     clientes: response.results || [],
     total: response.count || 0,
@@ -46,7 +50,12 @@ export const actualizarCliente = async (id: number, data: Omit<Cliente, 'id' | '
   })
 }
 
-export const eliminarCliente = async (id: number): Promise<void> => {
+export const eliminarCliente = async (id: number, force: boolean = false): Promise<void> => {
+  if (force) {
+    return apiRequest<void>(`/clientes/${id}/force_delete/`, {
+      method: 'DELETE',
+    })
+  }
   return apiRequest<void>(`/clientes/${id}/`, {
     method: 'DELETE',
   })
