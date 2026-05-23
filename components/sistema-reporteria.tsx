@@ -9,6 +9,11 @@ import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Skeleton } from "@/components/ui/skeleton"
+import { toast } from "sonner"
+import { useEffect } from "react"
+import { lotificacionService, Lotificacion } from "@/lib/lotificacion-service"
+import { getReporteDashboard, ReporteDashboardResponse } from "@/lib/reportes-service"
 import {
   BarChart,
   Bar,
@@ -40,76 +45,72 @@ interface ReporteData {
 }
 
 export function SistemaReporteria() {
-  const [fechaInicio, setFechaInicio] = useState("2024-01-01")
-  const [fechaFin, setFechaFin] = useState("2024-12-31")
-  const [tipoReporte, setTipoReporte] = useState("general")
-  const [manzanaFiltro, setManzanaFiltro] = useState("all")
+  const [fechaInicio, setFechaInicio] = useState(() => {
+    const d = new Date()
+    d.setMonth(0)
+    d.setDate(1)
+    return d.toISOString().split('T')[0]
+  })
+  const [fechaFin, setFechaFin] = useState(() => new Date().toISOString().split('T')[0])
+  const [proyectoFiltro, setProyectoFiltro] = useState("all")
+  
+  const [lotificaciones, setLotificaciones] = useState<Lotificacion[]>([])
+  
+  const [isLoading, setIsLoading] = useState(false)
+  const [reporteData, setReporteData] = useState<ReporteDashboardResponse | null>(null)
 
-  // Mock data - en producción vendría de la base de datos
-  const reporteData: ReporteData = {
-    lotesDisponibles: 95,
-    lotesFinanciados: 35,
-    lotesReservados: 8,
-    lotesPagados: 12,
-    lotesCancelados: 0,
-    valorTotalVentas: 7759646.95,
-    valorEnganches: 1551929.39,
-    valorCapitalCobrado: 3879823.48,
-    valorInteresesCobrados: 465578.82,
-    valorReservas: 42000,
-    valorPendienteCobro: 1820315.26,
+  useEffect(() => {
+    const fetchProyectos = async () => {
+      try {
+        const res = await lotificacionService.getLotificaciones()
+        setLotificaciones(res)
+      } catch (error) {
+        console.error("Error al cargar proyectos:", error)
+      }
+    }
+    fetchProyectos()
+  }, [])
+
+  const generarReporte = async () => {
+    if (!fechaInicio || !fechaFin) {
+      toast.error("Debes seleccionar una fecha de inicio y fin")
+      return
+    }
+    setIsLoading(true)
+    try {
+      const data = await getReporteDashboard(fechaInicio, fechaFin, proyectoFiltro === "all" ? undefined : proyectoFiltro)
+      setReporteData(data)
+      toast.success("Reporte generado exitosamente")
+    } catch (error) {
+      toast.error("Error al generar el reporte")
+      console.error(error)
+    } finally {
+      setIsLoading(false)
+    }
   }
 
-  const dataPorEstado = [
+  // Derived state
+  const dataPorEstado = reporteData ? [
     { name: "Disponibles", value: reporteData.lotesDisponibles, color: "#6366f1" },
     { name: "Financiados", value: reporteData.lotesFinanciados, color: "#dc2626" },
     { name: "Reservados", value: reporteData.lotesReservados, color: "#f59e0b" },
     { name: "Pagados", value: reporteData.lotesPagados, color: "#059669" },
-  ]
+  ] : []
 
-  const dataFinanciera = [
+  const dataFinanciera = reporteData ? [
     { name: "Enganches", monto: reporteData.valorEnganches },
     { name: "Capital Cobrado", monto: reporteData.valorCapitalCobrado },
     { name: "Intereses", monto: reporteData.valorInteresesCobrados },
     { name: "Reservas", monto: reporteData.valorReservas },
     { name: "Pendiente Cobro", monto: reporteData.valorPendienteCobro },
-  ]
+  ] : []
 
-  const dataVentasMensuales = [
-    { mes: "Ene", ventas: 2, monto: 300000 },
-    { mes: "Feb", ventas: 3, monto: 450000 },
-    { mes: "Mar", ventas: 1, monto: 150000 },
-    { mes: "Abr", ventas: 4, monto: 600000 },
-    { mes: "May", ventas: 2, monto: 300000 },
-    { mes: "Jun", ventas: 0, monto: 0 },
-  ]
+  const dataVentasMensuales = reporteData?.dataVentasMensuales || []
+  const resumenPorManzana = reporteData?.resumenPorManzana || []
 
-  const resumenPorManzana = [
-    {
-      manzana: "A",
-      disponibles: 35,
-      financiados: 12,
-      reservados: 3,
-      pagados: 5,
-      valorTotal: 2850000,
-    },
-    {
-      manzana: "B",
-      disponibles: 28,
-      financiados: 15,
-      reservados: 2,
-      pagados: 4,
-      valorTotal: 2200000,
-    },
-    {
-      manzana: "C",
-      disponibles: 32,
-      financiados: 8,
-      reservados: 3,
-      pagados: 3,
-      valorTotal: 2709646.95,
-    },
-  ]
+  const totalLotes = reporteData 
+    ? reporteData.lotesDisponibles + reporteData.lotesFinanciados + reporteData.lotesReservados + reporteData.lotesPagados 
+    : 0
 
   const exportarPDF = () => {
     console.log("Exportando reporte a PDF...")
@@ -117,17 +118,8 @@ export function SistemaReporteria() {
   }
 
   const exportarExcel = () => {
-    console.log("Exportando reporte a Excel...")
-    // Implementar exportación a Excel
+    toast.info("Función de exportación a Excel en desarrollo")
   }
-
-  const generarReporte = () => {
-    console.log("Generando reporte personalizado...")
-    // Implementar generación de reporte
-  }
-
-  const totalLotes =
-    reporteData.lotesDisponibles + reporteData.lotesFinanciados + reporteData.lotesReservados + reporteData.lotesPagados
 
   return (
     <div className="space-y-6">
@@ -146,9 +138,9 @@ export function SistemaReporteria() {
             <Download className="h-4 w-4 mr-2" />
             PDF
           </Button>
-          <Button onClick={generarReporte}>
+          <Button onClick={generarReporte} disabled={isLoading}>
             <FileText className="h-4 w-4 mr-2" />
-            Generar Reporte
+            {isLoading ? "Generando..." : "Generar Reporte"}
           </Button>
         </div>
       </div>
@@ -174,31 +166,17 @@ export function SistemaReporteria() {
               <Label htmlFor="fecha-fin">Fecha Fin</Label>
               <Input id="fecha-fin" type="date" value={fechaFin} onChange={(e) => setFechaFin(e.target.value)} />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="tipo-reporte">Tipo de Reporte</Label>
-              <Select value={tipoReporte} onValueChange={setTipoReporte}>
+            <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="proyecto-filtro">Proyecto o Lotificación</Label>
+              <Select value={proyectoFiltro} onValueChange={setProyectoFiltro}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Selecciona tipo" />
+                  <SelectValue placeholder="Todos los proyectos" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="general">Reporte General</SelectItem>
-                  <SelectItem value="financiero">Reporte Financiero</SelectItem>
-                  <SelectItem value="ventas">Reporte de Ventas</SelectItem>
-                  <SelectItem value="cobranza">Reporte de Cobranza</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="manzana-filtro">Manzana</Label>
-              <Select value={manzanaFiltro} onValueChange={setManzanaFiltro}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Todas las manzanas" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todas</SelectItem>
-                  <SelectItem value="A">Manzana A</SelectItem>
-                  <SelectItem value="B">Manzana B</SelectItem>
-                  <SelectItem value="C">Manzana C</SelectItem>
+                  <SelectItem value="all">Todos los proyectos</SelectItem>
+                  {lotificaciones.map(lot => (
+                    <SelectItem key={lot.id} value={lot.id.toString()}>{lot.nombre}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -207,50 +185,70 @@ export function SistemaReporteria() {
       </Card>
 
       {/* KPIs principales */}
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Lotes</CardTitle>
-            <MapPin className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalLotes}</div>
-            <p className="text-xs text-muted-foreground">En el proyecto</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Valor Total Proyecto</CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">Q {reporteData.valorTotalVentas.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">Valor acumulado</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Tasa de Ocupación</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {(((totalLotes - reporteData.lotesDisponibles) / totalLotes) * 100).toFixed(1)}%
-            </div>
-            <p className="text-xs text-muted-foreground">Lotes vendidos/reservados</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Pendiente por Cobrar</CardTitle>
-            <Calendar className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">Q {reporteData.valorPendienteCobro.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">Saldo financiado</p>
-          </CardContent>
-        </Card>
-      </div>
+      {!reporteData && isLoading && (
+        <div className="grid gap-4 md:grid-cols-4">
+          <Skeleton className="h-28 w-full" />
+          <Skeleton className="h-28 w-full" />
+          <Skeleton className="h-28 w-full" />
+          <Skeleton className="h-28 w-full" />
+        </div>
+      )}
+      
+      {!reporteData && !isLoading && (
+        <div className="flex items-center justify-center h-64 border rounded-xl bg-slate-50 border-dashed">
+          <div className="text-center text-muted-foreground">
+            <BarChart3 className="mx-auto h-12 w-12 opacity-20 mb-3" />
+            <p>Configura los filtros y presiona "Generar Reporte" para ver los datos</p>
+          </div>
+        </div>
+      )}
+
+      {reporteData && (
+      <>
+        <div className="grid gap-4 md:grid-cols-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Lotes</CardTitle>
+              <MapPin className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{totalLotes}</div>
+              <p className="text-xs text-muted-foreground">En el proyecto seleccionado</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Valor Total Proyecto</CardTitle>
+              <DollarSign className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">Q {reporteData.valorTotalVentas.toLocaleString('es-GT', {minimumFractionDigits: 2})}</div>
+              <p className="text-xs text-muted-foreground">Valor acumulado en ventas</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Tasa de Ocupación</CardTitle>
+              <TrendingUp className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {totalLotes > 0 ? (((totalLotes - reporteData.lotesDisponibles) / totalLotes) * 100).toFixed(1) : "0"}%
+              </div>
+              <p className="text-xs text-muted-foreground">Lotes vendidos/reservados</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Pendiente por Cobrar</CardTitle>
+              <Calendar className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">Q {reporteData.valorPendienteCobro.toLocaleString('es-GT', {minimumFractionDigits: 2})}</div>
+              <p className="text-xs text-muted-foreground">Saldo financiado restante</p>
+            </CardContent>
+          </Card>
+        </div>
 
       {/* Tabs de reportes */}
       <Tabs defaultValue="resumen" className="space-y-4">
@@ -531,45 +529,33 @@ export function SistemaReporteria() {
                     <TableBody>
                       <TableRow>
                         <TableCell className="font-medium">Reservados</TableCell>
-                        <TableCell>0</TableCell>
-                        <TableCell>Q -</TableCell>
-                        <TableCell>Q -</TableCell>
+                        <TableCell>{reporteData.lotesReservados}</TableCell>
+                        <TableCell>Q 0.00</TableCell>
+                        <TableCell>Q {reporteData.valorReservas.toLocaleString('es-GT', {minimumFractionDigits: 2})}</TableCell>
                       </TableRow>
                       <TableRow>
-                        <TableCell className="font-medium">Cancelados totalmente</TableCell>
-                        <TableCell>0</TableCell>
-                        <TableCell>Q -</TableCell>
-                        <TableCell>Q -</TableCell>
+                        <TableCell className="font-medium">Cancelados / Disponibles</TableCell>
+                        <TableCell>{reporteData.lotesDisponibles}</TableCell>
+                        <TableCell>Q 0.00</TableCell>
+                        <TableCell>Q 0.00</TableCell>
                       </TableRow>
                       <TableRow>
-                        <TableCell className="font-medium">Disponibles</TableCell>
-                        <TableCell>95</TableCell>
-                        <TableCell>Q -</TableCell>
-                        <TableCell>Q 7,680,177.45</TableCell>
+                        <TableCell className="font-medium">Financiados</TableCell>
+                        <TableCell>{reporteData.lotesFinanciados}</TableCell>
+                        <TableCell>Q {reporteData.valorPendienteCobro.toLocaleString('es-GT', {minimumFractionDigits: 2})}</TableCell>
+                        <TableCell>Q {(reporteData.valorEnganches + reporteData.valorCapitalCobrado).toLocaleString('es-GT', {minimumFractionDigits: 2})}</TableCell>
                       </TableRow>
                       <TableRow>
-                        <TableCell className="font-medium">Financiados (enganche y capital)</TableCell>
-                        <TableCell>1</TableCell>
-                        <TableCell>Q -</TableCell>
-                        <TableCell>Q 79,469.50</TableCell>
-                      </TableRow>
-                      <TableRow>
-                        <TableCell className="font-medium">Comerciales y Bodegas</TableCell>
-                        <TableCell>-</TableCell>
-                        <TableCell>Q -</TableCell>
-                        <TableCell>Q -</TableCell>
-                      </TableRow>
-                      <TableRow>
-                        <TableCell className="font-medium">Ejecutivos (escriturados y financiados)</TableCell>
-                        <TableCell>-</TableCell>
-                        <TableCell>Q -</TableCell>
-                        <TableCell>Q -</TableCell>
+                        <TableCell className="font-medium">Pagados / Escriturados</TableCell>
+                        <TableCell>{reporteData.lotesPagados}</TableCell>
+                        <TableCell>Q 0.00</TableCell>
+                        <TableCell>Q {(reporteData.valorTotalVentas - (reporteData.valorEnganches + reporteData.valorCapitalCobrado + reporteData.valorPendienteCobro)).toLocaleString('es-GT', {minimumFractionDigits: 2})}</TableCell>
                       </TableRow>
                       <TableRow className="bg-muted">
-                        <TableCell className="font-bold">TOTAL</TableCell>
-                        <TableCell className="font-bold">96</TableCell>
-                        <TableCell className="font-bold">0</TableCell>
-                        <TableCell className="font-bold">Q 7,759,646.95</TableCell>
+                        <TableCell className="font-bold">TOTAL PROYECTO</TableCell>
+                        <TableCell className="font-bold">{totalLotes}</TableCell>
+                        <TableCell className="font-bold">Q {reporteData.valorPendienteCobro.toLocaleString('es-GT', {minimumFractionDigits: 2})}</TableCell>
+                        <TableCell className="font-bold">Q {reporteData.valorTotalVentas.toLocaleString('es-GT', {minimumFractionDigits: 2})}</TableCell>
                       </TableRow>
                     </TableBody>
                   </Table>
@@ -585,47 +571,33 @@ export function SistemaReporteria() {
                       <TableBody>
                         <TableRow>
                           <TableCell className="font-medium">ENGANCHES</TableCell>
-                          <TableCell>Q {reporteData.valorEnganches.toLocaleString()}</TableCell>
+                          <TableCell>Q {reporteData.valorEnganches.toLocaleString('es-GT', {minimumFractionDigits: 2})}</TableCell>
                         </TableRow>
                         <TableRow>
                           <TableCell className="font-medium">CAPITAL</TableCell>
-                          <TableCell>Q {reporteData.valorCapitalCobrado.toLocaleString()}</TableCell>
+                          <TableCell>Q {reporteData.valorCapitalCobrado.toLocaleString('es-GT', {minimumFractionDigits: 2})}</TableCell>
                         </TableRow>
                         <TableRow>
                           <TableCell className="font-medium">INTERESES</TableCell>
-                          <TableCell>Q {reporteData.valorInteresesCobrados.toLocaleString()}</TableCell>
+                          <TableCell>Q {reporteData.valorInteresesCobrados.toLocaleString('es-GT', {minimumFractionDigits: 2})}</TableCell>
                         </TableRow>
                         <TableRow>
-                          <TableCell className="font-medium">YA ESCRITURADOS</TableCell>
-                          <TableCell>Q -</TableCell>
+                          <TableCell className="font-medium">YA ESCRITURADOS / PAGADOS</TableCell>
+                          <TableCell>Q {(reporteData.valorTotalVentas - (reporteData.valorEnganches + reporteData.valorCapitalCobrado + reporteData.valorPendienteCobro)).toLocaleString('es-GT', {minimumFractionDigits: 2})}</TableCell>
                         </TableRow>
                         <TableRow>
                           <TableCell className="font-medium">LOTES RESERVADOS</TableCell>
-                          <TableCell>Q {reporteData.valorReservas.toLocaleString()}</TableCell>
-                        </TableRow>
-                        <TableRow>
-                          <TableCell className="font-medium">BODEGAS Y COMERCIALES</TableCell>
-                          <TableCell>Q -</TableCell>
-                        </TableRow>
-                        <TableRow>
-                          <TableCell className="font-medium">LOTES PENDIENTES EN VENTA</TableCell>
-                          <TableCell>Q -</TableCell>
+                          <TableCell>Q {reporteData.valorReservas.toLocaleString('es-GT', {minimumFractionDigits: 2})}</TableCell>
                         </TableRow>
                         <TableRow>
                           <TableCell className="font-medium">POR RECIBIR</TableCell>
-                          <TableCell>Q {reporteData.valorPendienteCobro.toLocaleString()}</TableCell>
+                          <TableCell>Q {reporteData.valorPendienteCobro.toLocaleString('es-GT', {minimumFractionDigits: 2})}</TableCell>
                         </TableRow>
                         <TableRow className="bg-muted">
-                          <TableCell className="font-bold">TOTAL</TableCell>
+                          <TableCell className="font-bold">TOTAL VENTA/PROYECTO</TableCell>
                           <TableCell className="font-bold">
                             Q{" "}
-                            {(
-                              reporteData.valorEnganches +
-                              reporteData.valorCapitalCobrado +
-                              reporteData.valorInteresesCobrados +
-                              reporteData.valorReservas +
-                              reporteData.valorPendienteCobro
-                            ).toLocaleString()}
+                            {reporteData.valorTotalVentas.toLocaleString('es-GT', {minimumFractionDigits: 2})}
                           </TableCell>
                         </TableRow>
                       </TableBody>
@@ -653,6 +625,8 @@ export function SistemaReporteria() {
           </Card>
         </TabsContent>
       </Tabs>
+      </>
+      )}
     </div>
   )
 }

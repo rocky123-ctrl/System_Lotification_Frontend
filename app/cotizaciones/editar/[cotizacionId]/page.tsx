@@ -2,11 +2,12 @@ import { DashboardLayout } from "@/components/dashboard-layout"
 import { CotizacionForm } from "@/components/cotizacion-form"
 import ProtectedRoute from "@/components/protected-route"
 
-export default function EditarCotizacionPage({ params }: { params: { cotizacionId: string } }) {
+export default async function EditarCotizacionPage({ params }: { params: Promise<{ cotizacionId: string }> }) {
+  const { cotizacionId } = await params;
   return (
     <ProtectedRoute>
       <DashboardLayout>
-        <CotizacionForm cotizacionId={params.cotizacionId} />
+        <CotizacionForm cotizacionId={cotizacionId} />
       </DashboardLayout>
     </ProtectedRoute>
   )

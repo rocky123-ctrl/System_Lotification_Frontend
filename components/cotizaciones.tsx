@@ -49,7 +49,7 @@ export function Cotizaciones() {
   const [isLoadingLotes, setIsLoadingLotes] = useState(false)
   const [currentPageLotes, setCurrentPageLotes] = useState(1)
   const [totalItemsLotes, setTotalItemsLotes] = useState(0)
-  const itemsPerPageServer = 8
+  const itemsPerPageServer = 10
 
   // Historial de Cotizaciones
   const [cotizacionesHistory, setCotizacionesHistory] = useState<Cotizacion[]>([])
@@ -62,19 +62,15 @@ export function Cotizaciones() {
   const [isConverting, setIsConverting] = useState<number | null>(null)
   const [isRechazando, setIsRechazando] = useState<number | null>(null)
   const [isRestaurando, setIsRestaurando] = useState<number | null>(null)
+  const [isEliminando, setIsEliminando] = useState<number | null>(null)
 
   // Share Modal State
   const [isShareModalOpen, setIsShareModalOpen] = useState(false)
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedHistorySearchTerm(historySearchTerm)
-    }, 500)
-    return () => clearTimeout(timer)
-  }, [historySearchTerm])
   const [sharingCotizacion, setSharingCotizacion] = useState<Cotizacion | null>(null)
   const [filename, setFilename] = useState("")
   const [isExporting, setIsExporting] = useState(false)
+  const [savePath, setSavePath] = useState("C:\\Users\\Usuario\\Downloads")
+  const [dirHandle, setDirHandle] = useState<any>(null)
   const [canShare, setCanShare] = useState(false)
 
   useEffect(() => {
@@ -228,6 +224,20 @@ export function Cotizaciones() {
     }
   }
 
+  const handleEliminarCotizacion = async (id: number) => {
+    if (!confirm("¿Estás seguro de eliminar permanentemente esta cotización? Esta acción no se puede deshacer.")) return
+    setIsEliminando(id)
+    try {
+      await cotizacionesService.eliminarCotizacion(id)
+      toast.success("Cotización eliminada exitosamente")
+      loadHistory(currentPageHistory)
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || "Error al eliminar la cotización")
+    } finally {
+      setIsEliminando(null)
+    }
+  }
+
   const handleConvertirAVenta = async (cotizacion: Cotizacion) => {
      if(new Date(cotizacion.fecha_vencimiento) < new Date(new Date().setHours(0,0,0,0))) {
         toast.error("Esta cotización ya venció.")
@@ -242,7 +252,12 @@ export function Cotizaciones() {
           router.push(`/venta`) // Or stay and reload
           loadHistory(currentPageHistory)
         } catch(err: any) {
-          toast.error(err.response?.data?.error || "Error al convertir la cotización a venta. Valide si hay cliente asociado y si el lote está disponible.")
+          const errorData = err.response?.data
+          if (errorData?.code === 'LOTE_NO_DISPONIBLE' || errorData?.error?.includes('ya hay una venta registrada') || errorData?.error?.includes('ya no está disponible')) {
+            toast.warning(errorData?.error || "No se pudo concretar la cotización porque ya hay una venta registrada del lote cotizado.")
+          } else {
+            toast.error(errorData?.error || "Error al convertir la cotización a venta. Valide si hay cliente asociado y si el lote está disponible.")
+          }
         } finally {
           setIsConverting(null)
         }
@@ -252,71 +267,84 @@ export function Cotizaciones() {
   const openShareModal = (cotizacion: Cotizacion) => {
     setSharingCotizacion(cotizacion)
     setFilename(`Cotizacion_${cotizacion.lote_numero}_${cotizacion.cliente_nombre?.replace(/\s+/g, '_') || 'Prospecto'}`)
+    setDirHandle(null)
+    setSavePath("C:\\Users\\Usuario\\Downloads")
     setIsShareModalOpen(true)
   }
 
-  const handleDownloadExcel = async () => {
-    if (!sharingCotizacion) return
-    try {
-      setIsExporting(true)
-      const blob = await cotizacionesService.exportarExcel(sharingCotizacion.id, filename)
-      const url = window.URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `${filename}.xlsx`
-      document.body.appendChild(a)
-      a.click()
-      window.URL.revokeObjectURL(url)
-      document.body.removeChild(a)
-      toast.success("Archivo descargado exitosamente")
-      setIsShareModalOpen(false)
-    } catch (err: any) {
-      toast.error("Error al generar el archivo")
-    } finally {
-      setIsExporting(false)
+  const handleExaminar = async () => {
+    if (!filename.trim()) {
+      toast.error("Por favor, ingresa primero el nombre del archivo.");
+      return;
+    }
+    if (typeof window !== 'undefined' && 'showDirectoryPicker' in window) {
+      try {
+        const handle = await (window as any).showDirectoryPicker({
+          id: 'cotizaciones_excel',
+          mode: 'readwrite'
+        });
+        setDirHandle(handle);
+        setSavePath(`Carpeta: ${handle.name}`);
+        toast.success(`Carpeta "${handle.name}" seleccionada correctamente.`);
+      } catch (err: any) {
+        if (err.name !== 'AbortError') {
+          toast.error("Error al seleccionar la carpeta");
+        }
+      }
+    } else {
+      toast.info("Tu navegador gestionará la ubicación de descarga al presionar Descargar.");
     }
   }
 
-  const handleShareWhatsApp = async () => {
-    if (!sharingCotizacion) return
+  const handleDownloadExcel = async () => {
+    if (!sharingCotizacion) return;
+    if (!filename.trim()) {
+      toast.error("El nombre del archivo no puede estar vacío.");
+      return;
+    }
     try {
-      setIsExporting(true)
-      const blob = await cotizacionesService.exportarExcel(sharingCotizacion.id, filename)
-      const file = new File([blob], `${filename}.xlsx`, { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
-
-      if (canShare) {
-        try {
-          await navigator.share({
-            files: [file],
-            title: 'Cotización',
-            text: `Hola, te adjunto la cotización para el lote ${sharingCotizacion.lote_numero} de la manzana ${sharingCotizacion.lote_manzana} en ${sharingCotizacion.lotificacion_nombre}.`
-          })
-          setIsShareModalOpen(false)
-          toast.success("¡Compartido con éxito!")
-        } catch (shareErr: any) {
-          if (shareErr.name === 'AbortError') return
-          toast.error("Error al intentar compartir")
-        }
+      setIsExporting(true);
+      const blob = await cotizacionesService.exportarExcel(sharingCotizacion.id, filename);
+      const finalFilename = filename.endsWith('.xlsx') ? filename : `${filename}.xlsx`;
+      
+      if (dirHandle) {
+        const fileHandle = await dirHandle.getFileHandle(finalFilename, { create: true });
+        const writable = await fileHandle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+        toast.success(`Archivo guardado exitosamente en la carpeta "${dirHandle.name}"`);
+        setIsShareModalOpen(false);
+        setDirHandle(null);
+      } else if (typeof window !== 'undefined' && 'showSaveFilePicker' in window) {
+        const handle = await (window as any).showSaveFilePicker({
+          suggestedName: finalFilename,
+          types: [{
+            description: 'Archivo Excel',
+            accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] },
+          }],
+        });
+        const writable = await handle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+        toast.success("Archivo guardado exitosamente");
+        setIsShareModalOpen(false);
       } else {
-        // Fallback redundante por si acaso se llegara a ver el botón
-        const url = window.URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = `${filename}.xlsx`
-        document.body.appendChild(a)
-        a.click()
-        window.URL.revokeObjectURL(url)
-        document.body.removeChild(a)
-        
-        const phone = sharingCotizacion.telefono_prospecto || ""
-        const message = encodeURIComponent(`Hola, te adjunto la cotización para el lote ${sharingCotizacion.lote_numero} de la manzana ${sharingCotizacion.lote_manzana} en ${sharingCotizacion.lotificacion_nombre}.`)
-        window.open(`https://wa.me/${phone.replace(/\D/g, '')}?text=${message}`, '_blank')
-        setIsShareModalOpen(false)
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = finalFilename;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        toast.success("Archivo descargado exitosamente");
+        setIsShareModalOpen(false);
       }
     } catch (err: any) {
-      toast.error("Error al generar el archivo")
+      if (err.name === 'AbortError') return;
+      toast.error("Error al generar o guardar el archivo");
     } finally {
-      setIsExporting(false)
+      setIsExporting(false);
     }
   }
 
@@ -437,7 +465,7 @@ export function Cotizaciones() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right font-bold text-slate-800 text-sm">
-                        Q {parseFloat(c.valor_lote).toLocaleString('es-GT', { minimumFractionDigits: 2 })}
+                        Q {parseFloat(c.valor_lote || "0").toLocaleString('es-GT', { minimumFractionDigits: 2 })}
                       </TableCell>
                       {isGlobal && <TableCell className="text-xs">{c.vendedor_nombre}</TableCell>}
                       <TableCell className="text-right">
@@ -485,12 +513,12 @@ export function Cotizaciones() {
                                 <Button 
                                   variant="ghost" 
                                   size="sm" 
-                                  onClick={() => handleRechazarCotizacion(c.id)}
-                                  disabled={effectiveEstado === 'ACEPTADA' || effectiveEstado === 'RECHAZADA' || isRechazando === c.id}
+                                  onClick={() => handleEliminarCotizacion(c.id)}
+                                  disabled={effectiveEstado === 'ACEPTADA' || isEliminando === c.id}
                                   className="text-red-600 hover:bg-red-50 h-8 px-2"
-                                  title="Rechazar"
+                                  title="Eliminar cotización"
                                 >
-                                  {isRechazando === c.id ? <Loader2 className="w-4 h-4 animate-spin"/> : "Borrar"}
+                                  {isEliminando === c.id ? <Loader2 className="w-4 h-4 animate-spin"/> : "Borrar"}
                                 </Button>
                               </>
                             )
@@ -500,9 +528,9 @@ export function Cotizaciones() {
                             size="sm" 
                             onClick={() => openShareModal(c)}
                             className="text-blue-600 hover:bg-blue-50 h-8 px-2"
-                            title="Compartir"
+                            title="Descargar"
                           >
-                            <Share className="w-4 h-4" />
+                            <Download className="w-4 h-4" />
                           </Button>
                         </div>
                       </TableCell>
@@ -713,16 +741,16 @@ export function Cotizaciones() {
         )}
       </Tabs>
 
-      {/* MODAL DE COMPARTIR */}
+      {/* MODAL DE DESCARGAR */}
       <Dialog open={isShareModalOpen} onOpenChange={setIsShareModalOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Share className="h-5 w-5 text-primary" />
-              Compartir Cotización
+              <Download className="h-5 w-5 text-primary" />
+              Descargar Cotización
             </DialogTitle>
             <DialogDescription>
-              Configura el nombre del archivo y elige cómo quieres guardarlo.
+              Configura el nombre del archivo y elige la ubicación donde deseas guardarlo.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -739,19 +767,29 @@ export function Cotizaciones() {
                 <span className="text-muted-foreground text-sm">.xlsx</span>
               </div>
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="savepath">Ubicación de guardado</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="savepath"
+                  value={savePath}
+                  readOnly
+                  className="flex-1 bg-slate-50 text-slate-600 text-xs font-mono"
+                />
+                <Button 
+                  variant="outline" 
+                  onClick={handleExaminar}
+                  className="border-slate-300 hover:bg-slate-100 text-xs h-10 px-3"
+                >
+                  Examinar
+                </Button>
+              </div>
+              <p className="text-[10px] text-muted-foreground italic">
+                * Utiliza el explorador nativo para elegir la carpeta exacta en tu PC local.
+              </p>
+            </div>
           </div>
           <DialogFooter className="flex flex-col sm:flex-row gap-2">
-            {canShare && (
-              <Button
-                variant="outline"
-                className="flex-1 gap-2 border-green-200 text-green-700 hover:bg-green-50"
-                onClick={handleShareWhatsApp}
-                disabled={isExporting}
-              >
-                {isExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageCircle className="h-4 w-4" />}
-                Compartir en WhatsApp
-              </Button>
-            )}
             <Button
               className="flex-1 gap-2 bg-blue-600 hover:bg-blue-700"
               onClick={handleDownloadExcel}

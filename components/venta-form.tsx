@@ -144,9 +144,12 @@ export function VentaForm({ loteId, ventaId }: VentaFormProps) {
 
     setIsSubmittingVenta(true)
     try {
+      const valorLoteCalculado = (parseFloat(lote.valor_total) + (incluirInstalacion ? parseFloat(lote.costo_instalacion || "0") : 0)) - descuento;
+
       const payload: Partial<RegistrarVentaPayload> = {
         cliente: parseInt(selectedClienteId),
         lote: lote.id,
+        valor_lote: valorLoteCalculado,
         enganche: enganche,
         descuento: descuento,
         tipo_pago: tipoPago.toUpperCase() as any,

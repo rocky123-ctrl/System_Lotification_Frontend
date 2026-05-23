@@ -34,10 +34,8 @@ export function CotizacionForm({ loteId, cotizacionId }: CotizacionFormProps) {
   const [isLoadingMain, setIsLoadingMain] = useState(true)
 
   // Campos de formulario
-  const [esProspecto, setEsProspecto] = useState(false)
   const [selectedClienteId, setSelectedClienteId] = useState<string>("")
-  const [nombreProspecto, setNombreProspecto] = useState("")
-  const [telefonoProspecto, setTelefonoProspecto] = useState("")
+  const [clienteSearch, setClienteSearch] = useState<string>("")
   
   const [tipoPago, setTipoPago] = useState<'contado' | 'financiado'>('financiado')
   const [enganche, setEnganche] = useState<number>(0)
@@ -45,7 +43,7 @@ export function CotizacionForm({ loteId, cotizacionId }: CotizacionFormProps) {
   const [plazoMeses, setPlazoMeses] = useState<number>(12)
   const [tasaInteres, setTasaInteres] = useState<number>(12)
   const [incluirInstalacion, setIncluirInstalacion] = useState(false)
-  const [formaPago, setFormaPago] = useState<'EFECTIVO' | 'TARJETA' | 'TRANSFERENCIA'>('EFECTIVO')
+  const [formaPago, setFormaPago] = useState<'EFECTIVO' | 'TARJETA' | 'TRANSFERENCIA' | 'DEPOSITO'>('EFECTIVO')
   const [fechaVencimiento, setFechaVencimiento] = useState("")
 
   // Status de Peticiones
@@ -71,12 +69,7 @@ export function CotizacionForm({ loteId, cotizacionId }: CotizacionFormProps) {
           setCotizacion(c)
           
           if (c.cliente) {
-            setEsProspecto(false)
             setSelectedClienteId(String(c.cliente))
-          } else {
-            setEsProspecto(true)
-            setNombreProspecto(c.nombre_prospecto || "")
-            setTelefonoProspecto(c.telefono_prospecto || "")
           }
 
           setTipoPago(c.tipo_pago.toLowerCase() as any)
@@ -137,8 +130,7 @@ export function CotizacionForm({ loteId, cotizacionId }: CotizacionFormProps) {
   }, [enganche, descuento, tipoPago, plazoMeses, tasaInteres, incluirInstalacion, lote])
 
   const handleSubmit = async () => {
-    if (!esProspecto && !selectedClienteId) return toast.error("Debe seleccionar un cliente.")
-    if (esProspecto && !nombreProspecto) return toast.error("Debe indicar el nombre del prospecto.")
+    if (!selectedClienteId) return toast.error("Debe seleccionar un cliente.")
     if (!lote) return toast.error("No hay lote seleccionado.")
     if (!fechaVencimiento) return toast.error("La fecha de vencimiento es requerida.")
 
@@ -151,7 +143,7 @@ export function CotizacionForm({ loteId, cotizacionId }: CotizacionFormProps) {
     
     if (tipoPago === 'contado') {
       if (Math.abs(enganche - totalAPagar) > 0.01) {
-         return toast.error(`Para ventas al contado, el monto neto a pagar debe ser igual al total a cancelar (Q ${totalAPagar.toLocaleString('es-GT', { minimumFractionDigits: 2 })}).`);
+         return toast.error(`Para cotizaciones al contado, el monto neto propuesto a pagar debe ser igual al total a cancelar (Q ${totalAPagar.toLocaleString('es-GT', { minimumFractionDigits: 2 })}).`);
       }
     } else {
       if (enganche <= 0) return toast.error("El enganche propuesto debe ser mayor a 0 para una cotización financiada.");
@@ -161,12 +153,15 @@ export function CotizacionForm({ loteId, cotizacionId }: CotizacionFormProps) {
 
     setIsSubmitting(true)
     try {
+      const valorLoteCalculado = (parseFloat(lote.valor_total) + (incluirInstalacion ? parseFloat(lote.costo_instalacion || "0") : 0)) - descuento;
+
       const payload: Partial<RegistrarCotizacionPayload> = {
-        cliente: !esProspecto ? parseInt(selectedClienteId) : null,
-        nombre_prospecto: esProspecto ? nombreProspecto : "",
-        telefono_prospecto: esProspecto ? telefonoProspecto : "",
+        cliente: parseInt(selectedClienteId),
+        nombre_prospecto: "",
+        telefono_prospecto: "",
         fecha_vencimiento: fechaVencimiento,
         lote: lote.id,
+        valor_lote: valorLoteCalculado,
         enganche: enganche,
         descuento: descuento,
         tipo_pago: tipoPago.toUpperCase() as any,
@@ -253,41 +248,31 @@ export function CotizacionForm({ loteId, cotizacionId }: CotizacionFormProps) {
              </CardHeader>
              <CardContent className="pt-4 space-y-4">
 
-               <div className="flex items-center space-x-2 pb-2">
-                 <Checkbox id="es-prospecto" checked={esProspecto} onCheckedChange={(c) => setEsProspecto(!!c)} />
-                 <label htmlFor="es-prospecto" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                   Es un prospecto (Aún no está registrado como cliente)
-                 </label>
-               </div>
-
-               {!esProspecto ? (
-                 <div className="space-y-2">
-                   <Label>Seleccionar Cliente Existente</Label>
-                   <Select value={selectedClienteId} onValueChange={setSelectedClienteId}>
-                     <SelectTrigger>
-                       <SelectValue placeholder="Busque y seleccione un cliente..." />
-                     </SelectTrigger>
-                     <SelectContent>
-                       {clientes.map(c => (
-                         <SelectItem key={c.id} value={String(c.id)}>
-                           {c.nombres} {c.apellidos} {c.nit ? `(NIT: ${c.nit})` : ''}
-                         </SelectItem>
-                       ))}
-                     </SelectContent>
-                   </Select>
-                 </div>
-               ) : (
-                 <div className="space-y-4">
-                   <div className="space-y-2">
-                     <Label>Nombre del Prospecto</Label>
-                     <Input value={nombreProspecto} onChange={e => setNombreProspecto(e.target.value)} placeholder="Ej. Carlos Lopez" />
-                   </div>
-                   <div className="space-y-2">
-                     <Label>Teléfono</Label>
-                     <Input value={telefonoProspecto} onChange={e => setTelefonoProspecto(e.target.value)} placeholder="Ej. 12345678" />
-                   </div>
-                 </div>
-               )}
+                <div className="space-y-2 pb-2">
+                  <Label>Seleccionar Cliente Existente</Label>
+                  <Input 
+                    placeholder="Buscar cliente por nombre, apellido o DPI..." 
+                    value={clienteSearch} 
+                    onChange={e => setClienteSearch(e.target.value)} 
+                    className="mb-2"
+                  />
+                  <Select value={selectedClienteId} onValueChange={setSelectedClienteId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleccione un cliente de la lista..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {clientes.filter(c => c.estado === 'activo' && (
+                        c.nombres.toLowerCase().includes(clienteSearch.toLowerCase()) || 
+                        c.apellidos.toLowerCase().includes(clienteSearch.toLowerCase()) || 
+                        (c.dpi && c.dpi.includes(clienteSearch))
+                      )).map(c => (
+                        <SelectItem key={c.id} value={String(c.id)}>
+                          {c.nombres} {c.apellidos} {c.nit ? `(NIT: ${c.nit})` : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
 
                 <div className="space-y-2 pt-2 border-t">
                   <Label>Fecha de Vencimiento de Cotización</Label>
@@ -325,6 +310,7 @@ export function CotizacionForm({ loteId, cotizacionId }: CotizacionFormProps) {
                       <SelectItem value="EFECTIVO">Efectivo 💵</SelectItem>
                       <SelectItem value="TARJETA">Tarjeta 💳</SelectItem>
                       <SelectItem value="TRANSFERENCIA">Transferencia 🏦</SelectItem>
+                      <SelectItem value="DEPOSITO">Depósito 📥</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -386,8 +372,13 @@ export function CotizacionForm({ loteId, cotizacionId }: CotizacionFormProps) {
                     <div className="space-y-4">
                       {/* 1. Valor del Lote */}
                       <div className="flex justify-between items-center text-sm border-b border-slate-700/50 pb-2">
-                        <span className="text-slate-300">1. Valor del Lote {descuento > 0 ? '(con desc)' : ''}</span>
+                        <span className="text-slate-300">1. Valor del Lote {descuento > 0 ? '(con descuento)' : ''}</span>
                         <span className="font-medium text-base text-white">
+                          {descuento > 0 && (
+                            <span className="line-through text-slate-500 mr-2 text-xs">
+                               Q {(parseFloat(lote.valor_total) + (incluirInstalacion ? parseFloat(lote.costo_instalacion || "0") : 0)).toLocaleString('es-GT', { minimumFractionDigits: 2 })}
+                            </span>
+                          )}
                           Q {calculoBackend.valor_con_descuento.toLocaleString('es-GT', { minimumFractionDigits: 2 })}
                         </span>
                       </div>
@@ -395,7 +386,7 @@ export function CotizacionForm({ loteId, cotizacionId }: CotizacionFormProps) {
                       {/* 2. Enganche / Monto */}
                       <div className="flex justify-between items-center text-sm border-b border-slate-700/50 pb-2">
                         <span className="text-slate-300">
-                          {tipoPago === 'contado' ? '2. Pago Contado' : '2. Enganche Propuesto'}
+                          {tipoPago === 'contado' ? '2. Pago Contado Propuesto' : '2. Enganche Propuesto'}
                         </span>
                         <span className="font-medium text-base text-emerald-400">Q {enganche.toLocaleString('es-GT', { minimumFractionDigits: 2 })}</span>
                       </div>
@@ -410,6 +401,16 @@ export function CotizacionForm({ loteId, cotizacionId }: CotizacionFormProps) {
 
                       {tipoPago === 'financiado' && (
                         <>
+                          <div className="flex justify-between items-center text-sm border-b border-slate-700/50 pb-2">
+                            <span className="text-slate-300">Total Cuotas Estimadas</span>
+                            <span className="font-medium text-base text-white">{plazoMeses}</span>
+                          </div>
+                          
+                          <div className="flex justify-between items-center text-sm border-b border-slate-700/50 pb-2">
+                            <span className="text-slate-300">Tasa Mensual Efectiva</span>
+                            <span className="font-medium text-white">{calculoBackend.tasa_mensual_efectiva_porcentaje?.toFixed(4)}%</span>
+                          </div>
+
                           <div className="flex flex-col items-center justify-center bg-slate-900 rounded-lg p-5 mt-4 mt-8 border border-emerald-500/30">
                             <span className="text-slate-400 font-medium mb-1">Cuota Final Mensual</span>
                             <span className="font-bold text-3xl text-emerald-400">Q {calculoBackend?.cuota_final_mensual?.toLocaleString('es-GT', { minimumFractionDigits: 2 })}</span>
