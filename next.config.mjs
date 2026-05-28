@@ -11,7 +11,7 @@ const nextConfig = {
   },
   // Añade esto para permitir el desarrollo por IP
   experimental: {
-    allowedDevOrigins: ['192.168.1.21'],
+    allowedDevOrigins: ['192.168.1.21', '192.168.1.27'],
   },
 }
 

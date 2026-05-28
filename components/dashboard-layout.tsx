@@ -43,7 +43,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     return false
   })
 
-  const showLotificacionesSection = isSuperAdmin
+  const showLotificacionesSection = isSuperAdmin || isAdmin
   const lotificacionesNavigation = [
     { name: "Lotes", href: "/lotes", icon: MapPin },
     { name: "Lotificaciones", href: "/configuracion", icon: Settings },

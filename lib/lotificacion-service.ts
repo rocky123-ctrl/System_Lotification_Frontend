@@ -209,7 +209,7 @@ export const lotificacionService = {
 
   /** SVG del plano como texto (GET /api/lotes/lotificaciones/{id}/plano-svg/). Para plano interactivo. */
   async getPlanoSvg(lotificacionId: number): Promise<string> {
-    return apiRequestText(`/lotes/lotificaciones/${lotificacionId}/plano-svg/`)
+    return apiRequestText(`/lotes/lotificaciones/${lotificacionId}/plano-svg/?t=${Date.now()}`)
   },
 
   /** Lista de lotes de una lotificación (identificador, estado) para pintar el plano. */
@@ -303,6 +303,18 @@ export const lotificacionService = {
       {
         method: 'POST',
         body: JSON.stringify({ lote_id: loteId }),
+      }
+    )
+  },
+
+  /**
+   * Desvincular todos los lotes del plano SVG.
+   */
+  async desvincularTodosLotes(lotificacionId: number): Promise<{ success: boolean; message: string }> {
+    return apiRequest<{ success: boolean; message: string }>(
+      `/lotes/lotificaciones/${lotificacionId}/desvincular-todos-lotes/`,
+      {
+        method: 'POST',
       }
     )
   },

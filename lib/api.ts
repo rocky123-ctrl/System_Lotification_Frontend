@@ -10,6 +10,7 @@ export function redirectToLogin(reason?: string) {
     sessionStorage.removeItem(appConfig.auth.tokenKey)
     sessionStorage.removeItem(appConfig.auth.refreshTokenKey)
     sessionStorage.removeItem('lotificacion_user')
+    sessionStorage.removeItem('last_interaction')
     const queryParams = reason ? `?reason=${reason}` : ''
     window.location.href = `/login${queryParams}`
   }

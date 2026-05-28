@@ -235,10 +235,10 @@ export default function RegistrarClientePage() {
           <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
+                <AlertDialogTitle>¿Estás seguro de eliminar este cliente?</AlertDialogTitle>
                 <AlertDialogDescription>
                   Esta acción no se puede deshacer. Esto eliminará permanentemente al cliente
-                  <strong> {clienteToDelete?.nombres} {clienteToDelete?.apellidos}</strong> y todos sus datos asociados.
+                  <strong> {clienteToDelete?.nombres} {clienteToDelete?.apellidos}</strong> y <strong>TODOS sus registros asociados en cascada</strong> (ventas, pagos, servicios contratados, historial).
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>

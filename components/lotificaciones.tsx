@@ -160,6 +160,9 @@ export function Lotificaciones() {
   // Manejar eliminación de manzana individual
   const handleDeleteManzana = async (index: number, row: ManzanaRow) => {
     if (row.id) {
+      if (!confirm('Al eliminar esta manzana se eliminarán también en cascada todos sus lotes, ventas, pagos y financiamientos asociados. ¿Estás seguro? Esta acción no se puede deshacer.')) {
+        return
+      }
       try {
         setIsSubmitting(true)
         await lotificacionService.deleteManzana(row.id)
@@ -167,21 +170,11 @@ export function Lotificaciones() {
       } catch (err: any) {
         console.error('[Lotificaciones] Error eliminando manzana:', err)
         let errorMessage = 'Error al eliminar la manzana'
-        
-        if (err.status === 500 || err.message?.includes('500')) {
-          errorMessage = 'No se puede eliminar la manzana porque tiene lotes asociados. Elimina o desvincula los lotes primero.'
-        } else if (err.data) {
-          if (typeof err.data === 'string' && err.data.trim().startsWith('<')) {
-            errorMessage = 'Ocurrió un error en el servidor. Es muy probable que la manzana tenga lotes asociados.'
-          } else {
-            errorMessage = err.data.detail || err.data.message || err.data
-          }
+        if (err.data && err.data.detail) {
+          errorMessage = err.data.detail
+        } else if (err.message) {
+          errorMessage = err.message
         }
-        
-        if (typeof errorMessage === 'string' && (errorMessage.includes('relacion') || errorMessage.includes('foreign key') || errorMessage.includes('constraint') || errorMessage.includes('ProtectedError'))) {
-          errorMessage = 'No se puede eliminar la manzana porque tiene lotes asociados en el sistema.'
-        }
-        
         setWarningMessage(errorMessage)
       } finally {
         setIsSubmitting(false)
@@ -276,16 +269,6 @@ export function Lotificaciones() {
     try {
       setIsSubmitting(true)
 
-      console.log('[Lotificaciones] Verificando en el backend si tiene lotes...')
-      const lotificacionActualizada = await lotificacionService.getLotificacion(lotificacionToDelete.id)
-      if (lotificacionActualizada.total_lotes > 0) {
-        setWarningMessage(`No se puede eliminar la lotificación "${lotificacionActualizada.nombre}" porque tiene ${lotificacionActualizada.total_lotes} lote(s) asociado(s).`)
-        setIsSubmitting(false)
-        setIsDeleteDialogOpen(false)
-        setLotificacionToDelete(null)
-        return
-      }
-
       console.log('[Lotificaciones] Eliminando lotificación:', lotificacionToDelete.id)
       
       await lotificacionService.deleteLotificacion(lotificacionToDelete.id)
@@ -305,35 +288,12 @@ export function Lotificaciones() {
       
       console.log('[Lotificaciones] Eliminación completada exitosamente')
     } catch (err: any) {
-      // Se omite el console.error para no saturar el inspector del navegador; el error se maneja vía UI
-      
       let errorMessage = 'Error al eliminar la lotificación'
-      
-      // Chequeo rápido de status 500 (común en ProtectedError de Django)
-      if (err.status === 500 || err.message?.includes('500')) {
-        errorMessage = 'No se puede eliminar la lotificación porque tiene registros asociados (manzanas, servicios, etc.). Elimina estos registros primero.'
-      } else if (err.data) {
-        if (err.data.detail) {
-          errorMessage = err.data.detail
-        } else if (err.data.message) {
-          errorMessage = err.data.message
-        } else if (typeof err.data === 'string') {
-          // Si el backend devuelve HTML (ej. página de error cruda de Django)
-          if (err.data.trim().startsWith('<')) {
-            errorMessage = 'Ocurrió un error en el servidor. Es muy probable que la lotificación tenga registros asociados que impiden su eliminación segura.'
-          } else {
-            errorMessage = err.data
-          }
-        }
+      if (err.data && err.data.detail) {
+        errorMessage = err.data.detail
       } else if (err.message) {
         errorMessage = err.message
       }
-      
-      // Filtros adicionales por palabras clave de base de datos
-      if (errorMessage.includes('relacion') || errorMessage.includes('foreign key') || errorMessage.includes('constraint') || errorMessage.includes('ProtectedError')) {
-        errorMessage = 'No se puede eliminar la lotificación porque tiene registros asociados en el sistema. Primero elimina o desvincula esos registros.'
-      }
-      
       setWarningMessage(errorMessage)
       setIsDeleteDialogOpen(false)
     } finally {
@@ -856,21 +816,12 @@ export function Lotificaciones() {
                 isSubmitting={isSubmitting}
               />
             ) : (
-              <div className="space-y-3 rounded-lg border p-4 bg-muted/30">
-                <Label className="text-sm font-medium">Plano SVG de la Lotificación</Label>
-                <div className="flex items-center gap-2">
-                  <Input 
-                    type="file" 
-                    accept=".svg,image/svg+xml" 
-                    onChange={(e) => setPendingSvgFile(e.target.files?.[0] || null)}
-                    disabled={isSubmitting}
-                    className="flex-1"
-                  />
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Opcional. Selecciona un archivo SVG inicial. Podrás editarlo más tarde.
-                </p>
-              </div>
+              <SVGUploader
+                pendingFile={pendingSvgFile}
+                onPendingFileChange={setPendingSvgFile}
+                disabled={isSubmitting}
+                isSubmitting={isSubmitting}
+              />
             )}
 
             <DialogFooter>
@@ -928,11 +879,11 @@ export function Lotificaciones() {
       <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
+            <AlertDialogTitle>¿Estás seguro de eliminar esta lotificación?</AlertDialogTitle>
             <AlertDialogDescription>
               Esta acción no se puede deshacer. Se eliminará permanentemente la lotificación
-              <strong className="block mt-2">"{lotificacionToDelete?.nombre}"</strong>
-              y todos sus datos asociados.
+              <strong className="block mt-2 mb-2">"{lotificacionToDelete?.nombre}"</strong>
+              y <strong>TODOS los registros asociados en cascada</strong>, incluyendo todas sus manzanas, lotes, ventas de esos lotes, pagos y financiamientos.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

@@ -332,7 +332,7 @@ export function Empleados() {
             <AlertDialogDescription className="text-base pt-2">
               ¿Está seguro que desea eliminar a <strong className="text-foreground">{selectedEmpleado?.nombre} {selectedEmpleado?.apellido}</strong>? 
               <span className="block mt-4 p-3 bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 rounded-lg text-sm font-medium">
-                Esta acción es irreversible y eliminará también el acceso del usuario al sistema.
+                Esta acción es irreversible y eliminará también <strong>EN CASCADA todas sus ventas, cotizaciones y liquidaciones asociadas</strong>, además de su acceso al sistema.
               </span>
             </AlertDialogDescription>
           </AlertDialogHeader>

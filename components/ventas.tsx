@@ -295,7 +295,7 @@ export function Ventas() {
     }
   }
 
-  const isSuperadmin = user?.role === 'Superadmin' || user?.isSuperuser
+  const isSuperadmin = user?.role === 'Superadmin' || user?.role === 'Administrador' || user?.isSuperuser
 
   // Effect para cargar historial
   const loadHistory = useCallback(async (page: number = 1) => {

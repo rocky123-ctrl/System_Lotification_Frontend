@@ -179,16 +179,10 @@ export function ConfiguracionResumen() {
                 Gestionar Configuración
               </Button>
             </Link>
-            <Link href="/lotes/disponibles">
+            <Link href="/lotes">
               <Button variant="outline" size="sm">
                 <MapPin className="h-4 w-4 mr-2" />
-                Ver Lotes Disponibles
-              </Button>
-            </Link>
-            <Link href="/lotes/financiados">
-              <Button variant="outline" size="sm">
-                <DollarSign className="h-4 w-4 mr-2" />
-                Ver Lotes Financiados
+                Ver Gestión de Lotes
               </Button>
             </Link>
             <Link href="/reportes">

@@ -87,7 +87,7 @@ export function Cotizaciones() {
     }
   }, [])
 
-  const isSuperadmin = user?.role === 'Superadmin' || user?.isSuperuser
+  const isSuperadmin = user?.role === 'Superadmin' || user?.role === 'Administrador' || user?.isSuperuser
 
   // 1. Cargar lotificaciones
   useEffect(() => {

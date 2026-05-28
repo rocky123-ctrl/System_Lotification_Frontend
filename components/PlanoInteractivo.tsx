@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Loader2, AlertCircle, ZoomIn, ZoomOut, RotateCcw, Pencil, ShoppingCart, Unlink, Check, ChevronsUpDown } from "lucide-react"
+import { Loader2, AlertCircle, ZoomIn, ZoomOut, RotateCcw, Pencil, ShoppingCart, Unlink, Check, ChevronsUpDown, FileText } from "lucide-react"
 import {
   lotificacionService,
   type Lotificacion,
@@ -86,30 +86,6 @@ export function PlanoInteractivo({ lotificacionId, className }: PlanoInteractivo
   const [modalLote, setModalLote] = useState<LoteDetallePlano | null>(null)
   const [modalIdentificador, setModalIdentificador] = useState<string | null>(null)
   const [loadingLote, setLoadingLote] = useState(false)
-  const [registerModalOpen, setRegisterModalOpen] = useState(false)
-  const [registerSubmitting, setRegisterSubmitting] = useState(false)
-  const [registerError, setRegisterError] = useState<string | null>(null)
-  const [registerIdentificadorManual, setRegisterIdentificadorManual] = useState(false)
-  const [registerForm, setRegisterForm] = useState({
-    identificador: "",
-    metros_cuadrados: "",
-    valor_total: "",
-    costo_instalacion: "5000",
-    uso_lote: "residencial" as USO_LOTE,
-    estado_disponibilidad: "disponible" as ESTADO_DISPONIBILIDAD,
-  })
-  const [editModalOpen, setEditModalOpen] = useState(false)
-  const [editSubmitting, setEditSubmitting] = useState(false)
-  const [editError, setEditError] = useState<string | null>(null)
-  const [editIdentificadorManual, setEditIdentificadorManual] = useState(false)
-  const [editForm, setEditForm] = useState({
-    identificador: "",
-    metros_cuadrados: "",
-    valor_total: "",
-    costo_instalacion: "",
-    uso_lote: "residencial" as USO_LOTE,
-    estado_disponibilidad: "disponible" as ESTADO_DISPONIBILIDAD,
-  })
   const [relateModalOpen, setRelateModalOpen] = useState(false)
   const [relateLoading, setRelateLoading] = useState(false)
   const [relateSubmitting, setRelateSubmitting] = useState(false)
@@ -122,6 +98,8 @@ export function PlanoInteractivo({ lotificacionId, className }: PlanoInteractivo
   const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 })
   const [isPanning, setIsPanning] = useState(false)
   const [panStart, setPanStart] = useState({ x: 0, y: 0 })
+  const [desvincularTodosModalOpen, setDesvincularTodosModalOpen] = useState(false)
+  const [desvincularTodosSubmitting, setDesvincularTodosSubmitting] = useState(false)
   const didPanRef = useRef(false)
 
   // Cargar SVG y listado de lotes en paralelo
@@ -158,31 +136,9 @@ export function PlanoInteractivo({ lotificacionId, className }: PlanoInteractivo
     }
   }, [lotificacionId])
 
-  useEffect(() => {
-    if (registerModalOpen && modalIdentificador && !registerIdentificadorManual) {
-      const parsed = parseIdentificadorPlano(modalIdentificador)
-      if (parsed && lotificacionActual) {
-        const abrev = lotificacionActual.nombre.substring(0, 3).toUpperCase()
-        setRegisterForm(f => ({ ...f, identificador: `${abrev}-${parsed.manzanaNombre}-${parsed.numeroLote}`.toUpperCase() }))
-      } else {
-        setRegisterForm(f => ({ ...f, identificador: modalIdentificador }))
-      }
-    }
-  }, [registerModalOpen, modalIdentificador, registerIdentificadorManual, lotificacionActual])
+  // Efectos eliminados para registerModalOpen
 
-  useEffect(() => {
-    if (editModalOpen && modalLote && !editIdentificadorManual) {
-      setEditForm(f => ({ 
-        ...f, 
-        identificador: modalLote.identificador ?? "",
-        metros_cuadrados: String(modalLote.metros_cuadrados ?? ""),
-        valor_total: String(modalLote.valor_total ?? ""),
-        costo_instalacion: String(modalLote.costo_instalacion ?? ""),
-        uso_lote: modalLote.uso_lote as USO_LOTE,
-        estado_disponibilidad: modalLote.estado_disponibilidad as ESTADO_DISPONIBILIDAD,
-      }))
-    }
-  }, [editModalOpen, modalLote, editIdentificadorManual])
+  // Efectos eliminados para editModalOpen
 
   // Hashmap O(1) construido a partir de lotesList
   const mapLotesByKey = useMemo(() => {
@@ -225,17 +181,6 @@ export function PlanoInteractivo({ lotificacionId, className }: PlanoInteractivo
       if (!id) return
 
       let loteEncontrado = mapLotesByKey.get(id.toUpperCase())
-      
-      if (!loteEncontrado) {
-        const parsed = parseIdentificadorPlano(id)
-        if (parsed) {
-          const key = buildKey(parsed.manzanaNombre, parsed.numeroLote)
-          const loteCandidato = mapLotesByKey.get(key)
-          if (loteCandidato && !loteCandidato.plano_svg_id) {
-             loteEncontrado = loteCandidato
-          }
-        }
-      }
 
       if (loteEncontrado) {
         nuevosVinculados.add(loteEncontrado.id)
@@ -314,24 +259,33 @@ export function PlanoInteractivo({ lotificacionId, className }: PlanoInteractivo
   
   const handleMouseUp = useCallback(() => { setIsPanning(false) }, [])
   
-  const handleWheel = useCallback((e: React.WheelEvent) => {
+  const handleWheel = useCallback((e: WheelEvent) => {
     e.preventDefault()
     const delta = e.deltaY > 0 ? 1 / ZOOM_STEP : ZOOM_STEP
-    const newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, transform.scale * delta))
-    const rect = viewportRef.current?.getBoundingClientRect()
-    if (rect) {
-      const mx = e.clientX - rect.left
-      const my = e.clientY - rect.top
-      const scaleChange = newScale / transform.scale
-      setTransform({
-        scale: newScale,
-        x: mx - (mx - transform.x) * scaleChange,
-        y: my - (my - transform.y) * scaleChange,
-      })
-    } else {
-      setTransform((t) => ({ ...t, scale: newScale }))
-    }
-  }, [transform])
+    
+    setTransform((prevTransform) => {
+      const newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, prevTransform.scale * delta))
+      const rect = viewportRef.current?.getBoundingClientRect()
+      if (rect) {
+        const mx = e.clientX - rect.left
+        const my = e.clientY - rect.top
+        const scaleChange = newScale / prevTransform.scale
+        return {
+          scale: newScale,
+          x: mx - (mx - prevTransform.x) * scaleChange,
+          y: my - (my - prevTransform.y) * scaleChange,
+        }
+      }
+      return { ...prevTransform, scale: newScale }
+    })
+  }, [])
+
+  useEffect(() => {
+    const el = viewportRef.current
+    if (!el) return
+    el.addEventListener("wheel", handleWheel, { passive: false })
+    return () => el.removeEventListener("wheel", handleWheel)
+  }, [handleWheel])
 
   const formatMoney = (v: string | number) => `Q ${parseFloat(String(v)).toLocaleString("es-GT", { minimumFractionDigits: 2 })}`
   const formatDecimal = (v: string | number) => parseFloat(String(v)).toLocaleString("es-GT", { minimumFractionDigits: 2 })
@@ -344,7 +298,17 @@ export function PlanoInteractivo({ lotificacionId, className }: PlanoInteractivo
   )
 
   return (
-    <>
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <Button 
+          variant="outline" 
+          className="text-destructive hover:bg-destructive hover:text-destructive-foreground"
+          onClick={() => setDesvincularTodosModalOpen(true)}
+        >
+          <Unlink className="h-4 w-4 mr-2" />
+          Desvincular todos los lotes
+        </Button>
+      </div>
       <div
         ref={viewportRef}
         className={cn(
@@ -356,7 +320,6 @@ export function PlanoInteractivo({ lotificacionId, className }: PlanoInteractivo
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
-        onWheel={handleWheel}
       >
         <div
           ref={containerRef}
@@ -378,6 +341,9 @@ export function PlanoInteractivo({ lotificacionId, className }: PlanoInteractivo
             <DialogTitle>
               {modalLote ? `Lote ${modalLote.identificador ?? modalLote.numero_lote}` : "Detalle del Lote"}
             </DialogTitle>
+            <DialogDescription className="hidden">
+              Detalles y opciones para el lote seleccionado.
+            </DialogDescription>
           </DialogHeader>
           {loadingLote ? (
             <div className="flex justify-center p-8"><Loader2 className="h-8 w-8 animate-spin" /></div>
@@ -394,13 +360,15 @@ export function PlanoInteractivo({ lotificacionId, className }: PlanoInteractivo
                 <Row label="Instalación" value={formatMoney(modalLote.costo_instalacion)} />
               </div>
               <div className="flex gap-2 pt-2">
-                <Button variant="outline" size="sm" onClick={() => { setEditIdentificadorManual(false); setEditModalOpen(true); setModalOpen(false); }}>
-                  <Pencil className="h-4 w-4 mr-2" /> Editar
-                </Button>
                 {modalLote.estado_disponibilidad === 'disponible' && (
-                  <Button size="sm" onClick={() => window.location.href = `/lotes?lotificacion=${lotificacionId}&vender=${modalLote.id}`}>
-                    <ShoppingCart className="h-4 w-4 mr-2" /> Vender
-                  </Button>
+                  <>
+                    <Button size="sm" onClick={() => window.location.href = `/venta/registrar/${modalLote.id}`}>
+                      <ShoppingCart className="h-4 w-4 mr-2" /> Vender Lote
+                    </Button>
+                    <Button variant="secondary" size="sm" onClick={() => window.location.href = `/cotizaciones/registrar/${modalLote.id}`}>
+                      <FileText className="h-4 w-4 mr-2" /> Cotizar Lote
+                    </Button>
+                  </>
                 )}
                 <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={async () => {
                   setDesvincularLoading(true);
@@ -419,16 +387,11 @@ export function PlanoInteractivo({ lotificacionId, className }: PlanoInteractivo
             <div className="space-y-4">
               <p className="text-sm text-muted-foreground">Este espacio no tiene información asociada en el sistema.</p>
               <div className="flex flex-col gap-2">
-                <Button onClick={() => { 
-                  setRegisterForm(f => ({ ...f, identificador: modalIdentificador || "" }));
-                  setRegisterModalOpen(true); 
-                  setModalOpen(false); 
-                }}>Registrar como nuevo</Button>
                 <Button variant="outline" onClick={async () => {
                   setRelateLoading(true);
                   try {
-                    const list = await lotesService.getLotes({ lotificacion: lotificacionId });
-                    setRelateOptions(list.filter(l => !vinculadosIds.has(l.id)));
+                    const data = await lotesService.getLotes({ lotificacion: lotificacionId });
+                    setRelateOptions(data.results.filter(l => !vinculadosIds.has(l.id)));
                     setRelateModalOpen(true);
                     setModalOpen(false);
                   } finally { setRelateLoading(false); }
@@ -439,112 +402,15 @@ export function PlanoInteractivo({ lotificacionId, className }: PlanoInteractivo
         </DialogContent>
       </Dialog>
 
-      {/* Dialog Registro */}
-      <Dialog open={registerModalOpen} onOpenChange={setRegisterModalOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>Registrar Lote</DialogTitle></DialogHeader>
-          <form className="space-y-4" onSubmit={async (e) => {
-            e.preventDefault();
-            setRegisterSubmitting(true);
-            try {
-              const res = await lotificacionService.registrarLoteDesdePlano(lotificacionId, {
-                identificador: registerForm.identificador,
-                metros_cuadrados: parseFloat(registerForm.metros_cuadrados),
-                valor_total: parseFloat(registerForm.valor_total),
-                costo_instalacion: parseFloat(registerForm.costo_instalacion),
-                uso_lote: registerForm.uso_lote,
-                estado_disponibilidad: registerForm.estado_disponibilidad,
-              });
-              const list = await lotificacionService.getLotesPlano(lotificacionId);
-              setLotesList(list);
-              setModalLote(res);
-              setRegisterModalOpen(false);
-            } catch (err: any) { setRegisterError(err.message); } finally { setRegisterSubmitting(false); }
-          }}>
-            <div className="space-y-2">
-              <Label>Identificador</Label>
-              <Input value={registerForm.identificador} onChange={e => setRegisterForm(f => ({ ...f, identificador: e.target.value }))} />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div><Label>Metros²</Label><Input type="number" required value={registerForm.metros_cuadrados} onChange={e => setRegisterForm(f => ({ ...f, metros_cuadrados: e.target.value }))} /></div>
-              <div><Label>Valor (Q)</Label><Input type="number" required value={registerForm.valor_total} onChange={e => setRegisterForm(f => ({ ...f, valor_total: e.target.value }))} /></div>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-2">
-                <Label>Uso</Label>
-                <Select value={registerForm.uso_lote} onValueChange={v => setRegisterForm(f => ({ ...f, uso_lote: v as USO_LOTE }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent><SelectItem value="residencial">Residencial</SelectItem><SelectItem value="comercial_y_bodega">Comercial</SelectItem></SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Disponibilidad</Label>
-                <Select value={registerForm.estado_disponibilidad} onValueChange={v => setRegisterForm(f => ({ ...f, estado_disponibilidad: v as ESTADO_DISPONIBILIDAD }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(ESTADO_LABEL).map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            {registerError && <p className="text-xs text-destructive">{registerError}</p>}
-            <DialogFooter><Button type="submit" disabled={registerSubmitting}>Registrar</Button></DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
 
-      {/* Dialog Editar */}
-      <Dialog open={editModalOpen} onOpenChange={setEditModalOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>Editar Lote</DialogTitle></DialogHeader>
-          <form className="space-y-4" onSubmit={async (e) => {
-            e.preventDefault();
-            if (!modalLote) return;
-            setEditSubmitting(true);
-            try {
-              const res = await lotesService.updateLote(modalLote.id, {
-                metros_cuadrados: editForm.metros_cuadrados,
-                valor_total: editForm.valor_total,
-                costo_instalacion: editForm.costo_instalacion,
-                uso_lote: editForm.uso_lote,
-                estado_disponibilidad: editForm.estado_disponibilidad,
-                version: modalLote.version,
-              });
-              const list = await lotificacionService.getLotesPlano(lotificacionId);
-              setLotesList(list);
-              setEditModalOpen(false);
-            } catch (err: any) { setEditError(err.message); } finally { setEditSubmitting(false); }
-          }}>
-            <div className="grid grid-cols-2 gap-2">
-              <div><Label>Metros²</Label><Input type="number" required value={editForm.metros_cuadrados} onChange={e => setEditForm(f => ({ ...f, metros_cuadrados: e.target.value }))} /></div>
-              <div><Label>Valor (Q)</Label><Input type="number" required value={editForm.valor_total} onChange={e => setEditForm(f => ({ ...f, valor_total: e.target.value }))} /></div>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div><Label>Uso</Label>
-                <Select value={editForm.uso_lote} onValueChange={v => setEditForm(f => ({ ...f, uso_lote: v as USO_LOTE }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent><SelectItem value="residencial">Residencial</SelectItem><SelectItem value="comercial_y_bodega">Comercial</SelectItem></SelectContent>
-                </Select>
-              </div>
-              <div><Label>Disponibilidad</Label>
-                <Select value={editForm.estado_disponibilidad} onValueChange={v => setEditForm(f => ({ ...f, estado_disponibilidad: v as ESTADO_DISPONIBILIDAD }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(ESTADO_LABEL).map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            {editError && <p className="text-xs text-destructive">{editError}</p>}
-            <DialogFooter><Button type="submit" disabled={editSubmitting}>Guardar</Button></DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
       
       {/* Relate Modal */}
       <Dialog open={relateModalOpen} onOpenChange={setRelateModalOpen}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>Relacionar Lote</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>Relacionar Lote</DialogTitle>
+            <DialogDescription className="hidden">Seleccione un lote existente para vincularlo al plano</DialogDescription>
+          </DialogHeader>
           <div className="space-y-4 py-4">
              <Label>Seleccionar un lote disponible</Label>
              <Popover open={comboboxOpen} onOpenChange={setComboboxOpen}>
@@ -590,6 +456,41 @@ export function PlanoInteractivo({ lotificacionId, className }: PlanoInteractivo
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </>
+
+      {/* Dialog Desvincular Todos */}
+      <Dialog open={desvincularTodosModalOpen} onOpenChange={setDesvincularTodosModalOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center text-destructive">
+              <AlertCircle className="h-5 w-5 mr-2" />
+              Desvincular Todos los Lotes
+            </DialogTitle>
+            <DialogDescription>
+              ¿Está seguro que desea desvincular todos los lotes del plano actual? 
+              Los lotes perderán su color en el plano y deberá volver a relacionarlos manualmente. 
+              Esta acción no elimina los lotes de la base de datos.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDesvincularTodosModalOpen(false)} disabled={desvincularTodosSubmitting}>Cancelar</Button>
+            <Button variant="destructive" disabled={desvincularTodosSubmitting} onClick={async () => {
+              setDesvincularTodosSubmitting(true);
+              try {
+                await lotificacionService.desvincularTodosLotes(lotificacionId);
+                const list = await lotificacionService.getLotesPlano(lotificacionId);
+                setLotesList(list);
+                setDesvincularTodosModalOpen(false);
+              } catch (err) {
+                console.error("Error desvinculando todos los lotes", err);
+              } finally {
+                setDesvincularTodosSubmitting(false);
+              }
+            }}>
+              {desvincularTodosSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Desvincular Todos"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
   )
 }

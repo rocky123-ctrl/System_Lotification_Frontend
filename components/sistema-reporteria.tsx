@@ -13,7 +13,14 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from "sonner"
 import { useEffect } from "react"
 import { lotificacionService, Lotificacion } from "@/lib/lotificacion-service"
-import { getReporteDashboard, ReporteDashboardResponse } from "@/lib/reportes-service"
+import { 
+  getReporteDashboard, 
+  ReporteDashboardResponse,
+  getReporteFinanciamientoClientes,
+  getReporteServiciosClientes,
+  ReporteFinanciamientoResponse,
+  ReporteServiciosResponse
+} from "@/lib/reportes-service"
 import {
   BarChart,
   Bar,
@@ -47,23 +54,34 @@ interface ReporteData {
 export function SistemaReporteria() {
   const [fechaInicio, setFechaInicio] = useState(() => {
     const d = new Date()
-    d.setMonth(0)
-    d.setDate(1)
-    return d.toISOString().split('T')[0]
+    return `${d.getFullYear()}-01`
   })
-  const [fechaFin, setFechaFin] = useState(() => new Date().toISOString().split('T')[0])
-  const [proyectoFiltro, setProyectoFiltro] = useState("all")
+  const [fechaFin, setFechaFin] = useState(() => {
+    const d = new Date()
+    const m = (d.getMonth() + 1).toString().padStart(2, '0')
+    return `${d.getFullYear()}-${m}`
+  })
+  const [proyectoFiltro, setProyectoFiltro] = useState("")
   
   const [lotificaciones, setLotificaciones] = useState<Lotificacion[]>([])
   
   const [isLoading, setIsLoading] = useState(false)
   const [reporteData, setReporteData] = useState<ReporteDashboardResponse | null>(null)
+  
+  const [financiamientoData, setFinanciamientoData] = useState<ReporteFinanciamientoResponse | null>(null)
+  const [serviciosData, setServiciosData] = useState<ReporteServiciosResponse | null>(null)
+  const [pageFinanciamiento, setPageFinanciamiento] = useState(1)
+  const [pageServicios, setPageServicios] = useState(1)
+  const [appliedLotificacion, setAppliedLotificacion] = useState<string>("")
 
   useEffect(() => {
     const fetchProyectos = async () => {
       try {
         const res = await lotificacionService.getLotificaciones()
         setLotificaciones(res)
+        if (res.length > 0) {
+          setProyectoFiltro(res[0].id.toString())
+        }
       } catch (error) {
         console.error("Error al cargar proyectos:", error)
       }
@@ -76,10 +94,24 @@ export function SistemaReporteria() {
       toast.error("Debes seleccionar una fecha de inicio y fin")
       return
     }
+    if (!proyectoFiltro) {
+      toast.error("Debes seleccionar un proyecto")
+      return
+    }
     setIsLoading(true)
     try {
-      const data = await getReporteDashboard(fechaInicio, fechaFin, proyectoFiltro === "all" ? undefined : proyectoFiltro)
+      const data = await getReporteDashboard(fechaInicio, fechaFin, proyectoFiltro)
       setReporteData(data)
+      setAppliedLotificacion(proyectoFiltro)
+      setPageFinanciamiento(1)
+      setPageServicios(1)
+      
+      const finData = await getReporteFinanciamientoClientes(proyectoFiltro, 1)
+      setFinanciamientoData(finData)
+      
+      const servData = await getReporteServiciosClientes(proyectoFiltro, 1)
+      setServiciosData(servData)
+      
       toast.success("Reporte generado exitosamente")
     } catch (error) {
       toast.error("Error al generar el reporte")
@@ -87,6 +119,20 @@ export function SistemaReporteria() {
     } finally {
       setIsLoading(false)
     }
+  }
+
+  const handlePageChangeFinanciamiento = async (newPage: number) => {
+    if (!appliedLotificacion) return
+    setPageFinanciamiento(newPage)
+    const finData = await getReporteFinanciamientoClientes(appliedLotificacion, newPage)
+    setFinanciamientoData(finData)
+  }
+
+  const handlePageChangeServicios = async (newPage: number) => {
+    if (!appliedLotificacion) return
+    setPageServicios(newPage)
+    const servData = await getReporteServiciosClientes(appliedLotificacion, newPage)
+    setServiciosData(servData)
   }
 
   // Derived state
@@ -112,14 +158,6 @@ export function SistemaReporteria() {
     ? reporteData.lotesDisponibles + reporteData.lotesFinanciados + reporteData.lotesReservados + reporteData.lotesPagados 
     : 0
 
-  const exportarPDF = () => {
-    console.log("Exportando reporte a PDF...")
-    // Implementar exportación a PDF
-  }
-
-  const exportarExcel = () => {
-    toast.info("Función de exportación a Excel en desarrollo")
-  }
 
   return (
     <div className="space-y-6">
@@ -130,14 +168,7 @@ export function SistemaReporteria() {
           <p className="text-muted-foreground">Genera reportes detallados y análisis de la lotificación</p>
         </div>
         <div className="flex gap-2">
-          <Button onClick={exportarExcel} variant="outline" size="sm">
-            <Download className="h-4 w-4 mr-2" />
-            Excel
-          </Button>
-          <Button onClick={exportarPDF} variant="outline" size="sm">
-            <Download className="h-4 w-4 mr-2" />
-            PDF
-          </Button>
+
           <Button onClick={generarReporte} disabled={isLoading}>
             <FileText className="h-4 w-4 mr-2" />
             {isLoading ? "Generando..." : "Generar Reporte"}
@@ -157,23 +188,22 @@ export function SistemaReporteria() {
               <Label htmlFor="fecha-inicio">Fecha Inicio</Label>
               <Input
                 id="fecha-inicio"
-                type="date"
+                type="month"
                 value={fechaInicio}
                 onChange={(e) => setFechaInicio(e.target.value)}
               />
             </div>
             <div className="space-y-2">
               <Label htmlFor="fecha-fin">Fecha Fin</Label>
-              <Input id="fecha-fin" type="date" value={fechaFin} onChange={(e) => setFechaFin(e.target.value)} />
+              <Input id="fecha-fin" type="month" value={fechaFin} onChange={(e) => setFechaFin(e.target.value)} />
             </div>
             <div className="space-y-2 md:col-span-2">
               <Label htmlFor="proyecto-filtro">Proyecto o Lotificación</Label>
               <Select value={proyectoFiltro} onValueChange={setProyectoFiltro}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Todos los proyectos" />
+                  <SelectValue placeholder="Seleccione un proyecto" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Todos los proyectos</SelectItem>
                   {lotificaciones.map(lot => (
                     <SelectItem key={lot.id} value={lot.id.toString()}>{lot.nombre}</SelectItem>
                   ))}
@@ -222,8 +252,8 @@ export function SistemaReporteria() {
               <DollarSign className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">Q {reporteData.valorTotalVentas.toLocaleString('es-GT', {minimumFractionDigits: 2})}</div>
-              <p className="text-xs text-muted-foreground">Valor acumulado en ventas</p>
+              <div className="text-2xl font-bold">Q {reporteData.valorTotalProyectoLotes.toLocaleString('es-GT', {minimumFractionDigits: 2})}</div>
+              <p className="text-xs text-muted-foreground">Suma de valores de todos los lotes</p>
             </CardContent>
           </Card>
           <Card>
@@ -240,23 +270,22 @@ export function SistemaReporteria() {
           </Card>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Pendiente por Cobrar</CardTitle>
+              <CardTitle className="text-sm font-medium">Valor total de Ventas hechas</CardTitle>
               <Calendar className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">Q {reporteData.valorPendienteCobro.toLocaleString('es-GT', {minimumFractionDigits: 2})}</div>
-              <p className="text-xs text-muted-foreground">Saldo financiado restante</p>
+              <div className="text-2xl font-bold">Q {reporteData.valorTotalVentas.toLocaleString('es-GT', {minimumFractionDigits: 2})}</div>
+              <p className="text-xs text-muted-foreground">Valor acumulado en ventas</p>
             </CardContent>
           </Card>
         </div>
 
       {/* Tabs de reportes */}
       <Tabs defaultValue="resumen" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="resumen">Resumen General</TabsTrigger>
           <TabsTrigger value="financiero">Reporte Financiero</TabsTrigger>
           <TabsTrigger value="graficos">Gráficos</TabsTrigger>
-          <TabsTrigger value="detallado">Reporte Detallado</TabsTrigger>
         </TabsList>
 
         <TabsContent value="resumen" className="space-y-4">
@@ -286,167 +315,6 @@ export function SistemaReporteria() {
                     </div>
                   ))}
                 </div>
-              </CardContent>
-            </Card>
-
-            {/* Resumen por manzana */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Resumen por Manzana</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Manzana</TableHead>
-                        <TableHead>Disponibles</TableHead>
-                        <TableHead>Financiados</TableHead>
-                        <TableHead>Reservados</TableHead>
-                        <TableHead>Pagados</TableHead>
-                        <TableHead>Valor Total</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {resumenPorManzana.map((manzana) => (
-                        <TableRow key={manzana.manzana}>
-                          <TableCell className="font-medium">{manzana.manzana}</TableCell>
-                          <TableCell>{manzana.disponibles}</TableCell>
-                          <TableCell>{manzana.financiados}</TableCell>
-                          <TableCell>{manzana.reservados}</TableCell>
-                          <TableCell>{manzana.pagados}</TableCell>
-                          <TableCell>Q {manzana.valorTotal.toLocaleString()}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="financiero" className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
-            {/* Informe financiero detallado */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Informe Financiero Detallado</CardTitle>
-                <CardDescription>Valores en Quetzales (Q)</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center p-3 bg-muted rounded-lg">
-                    <span className="font-medium">Enganches Cobrados</span>
-                    <span className="font-bold">Q {reporteData.valorEnganches.toLocaleString()}</span>
-                  </div>
-                  <div className="flex justify-between items-center p-3 bg-muted rounded-lg">
-                    <span className="font-medium">Capital Cobrado</span>
-                    <span className="font-bold">Q {reporteData.valorCapitalCobrado.toLocaleString()}</span>
-                  </div>
-                  <div className="flex justify-between items-center p-3 bg-muted rounded-lg">
-                    <span className="font-medium">Intereses Cobrados</span>
-                    <span className="font-bold">Q {reporteData.valorInteresesCobrados.toLocaleString()}</span>
-                  </div>
-                  <div className="flex justify-between items-center p-3 bg-muted rounded-lg">
-                    <span className="font-medium">Reservas Cobradas</span>
-                    <span className="font-bold">Q {reporteData.valorReservas.toLocaleString()}</span>
-                  </div>
-                  <div className="flex justify-between items-center p-3 bg-destructive/10 rounded-lg">
-                    <span className="font-medium">Pendiente por Cobrar</span>
-                    <span className="font-bold text-destructive">
-                      Q {reporteData.valorPendienteCobro.toLocaleString()}
-                    </span>
-                  </div>
-                  <div className="border-t pt-4">
-                    <div className="flex justify-between items-center">
-                      <span className="text-lg font-bold">Total Cobrado</span>
-                      <span className="text-lg font-bold text-chart-3">
-                        Q{" "}
-                        {(
-                          reporteData.valorEnganches +
-                          reporteData.valorCapitalCobrado +
-                          reporteData.valorInteresesCobrados +
-                          reporteData.valorReservas
-                        ).toLocaleString()}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Indicadores de rendimiento */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Indicadores de Rendimiento</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span>Tasa de Conversión (Reserva → Venta)</span>
-                      <span className="font-medium">75%</span>
-                    </div>
-                    <div className="w-full bg-muted rounded-full h-2">
-                      <div className="bg-chart-3 h-2 rounded-full" style={{ width: "75%" }}></div>
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span>Tasa de Cobranza</span>
-                      <span className="font-medium">85%</span>
-                    </div>
-                    <div className="w-full bg-muted rounded-full h-2">
-                      <div className="bg-chart-1 h-2 rounded-full" style={{ width: "85%" }}></div>
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span>Ocupación del Proyecto</span>
-                      <span className="font-medium">
-                        {(((totalLotes - reporteData.lotesDisponibles) / totalLotes) * 100).toFixed(1)}%
-                      </span>
-                    </div>
-                    <div className="w-full bg-muted rounded-full h-2">
-                      <div
-                        className="bg-chart-4 h-2 rounded-full"
-                        style={{ width: `${((totalLotes - reporteData.lotesDisponibles) / totalLotes) * 100}%` }}
-                      ></div>
-                    </div>
-                  </div>
-                  <div className="pt-4 border-t">
-                    <div className="text-center">
-                      <div className="text-2xl font-bold text-chart-3">Q 465,579</div>
-                      <div className="text-sm text-muted-foreground">Intereses generados este año</div>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="graficos" className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
-            {/* Gráfico de barras - Ingresos por categoría */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <BarChart3 className="h-5 w-5" />
-                  Ingresos por Categoría
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={dataFinanciera}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="name" />
-                    <YAxis />
-                    <Tooltip formatter={(value) => [`Q ${Number(value).toLocaleString()}`, "Monto"]} />
-                    <Bar dataKey="monto" fill="#6366f1" />
-                  </BarChart>
-                </ResponsiveContainer>
               </CardContent>
             </Card>
 
@@ -480,9 +348,171 @@ export function SistemaReporteria() {
                 </ResponsiveContainer>
               </CardContent>
             </Card>
+          </div>
+        </TabsContent>
 
+        <TabsContent value="financiero" className="space-y-6">
+          {financiamientoData && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Cuentas por Cobrar (Financiamiento)</CardTitle>
+                <CardDescription>Clientes con lotes en financiamiento y progreso de cuotas.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Cliente</TableHead>
+                      <TableHead>Lote</TableHead>
+                      <TableHead>Progreso de Cuotas</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {financiamientoData.results.map((item) => (
+                      <TableRow key={item.venta_id}>
+                        <TableCell className="font-medium">{item.cliente_nombre}</TableCell>
+                        <TableCell>{item.lote}</TableCell>
+                        <TableCell>{item.progreso_cuotas}</TableCell>
+                      </TableRow>
+                    ))}
+                    {financiamientoData.results.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={3} className="text-center">No hay datos disponibles</TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+                
+                {/* Pagination Controls */}
+                <div className="flex items-center justify-between mt-4">
+                  <span className="text-sm text-muted-foreground">
+                    Total: {financiamientoData.count} registros
+                  </span>
+                  <div className="flex gap-2">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => handlePageChangeFinanciamiento(pageFinanciamiento - 1)}
+                      disabled={!financiamientoData.previous}
+                    >
+                      Anterior
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => handlePageChangeFinanciamiento(pageFinanciamiento + 1)}
+                      disabled={!financiamientoData.next}
+                    >
+                      Siguiente
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Recuadro de Totales */}
+          {financiamientoData && (
+            <div className="grid gap-4 md:grid-cols-3">
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium">Suma Total de Pagos</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">Q {financiamientoData.totales.total_monto.toLocaleString('es-GT', {minimumFractionDigits: 2})}</div>
+                  <p className="text-xs text-muted-foreground">Total histórico en cuentas cobrar</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium">Total Pagado</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-emerald-600">Q {financiamientoData.totales.pagados.toLocaleString('es-GT', {minimumFractionDigits: 2})}</div>
+                  <p className="text-xs text-muted-foreground">Suma de cuotas ya pagadas</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium">Total Pendiente/Vencido</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-destructive">Q {financiamientoData.totales.pendientes.toLocaleString('es-GT', {minimumFractionDigits: 2})}</div>
+                  <p className="text-xs text-muted-foreground">Suma de cuotas pendientes o vencidas</p>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {/* Segunda Tabla - Servicios */}
+          {serviciosData && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Estado de Servicios Activos</CardTitle>
+                <CardDescription>Clientes con servicios activos y su estado de cuenta al día.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Cliente</TableHead>
+                      <TableHead>Estado</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {serviciosData.results.map((item) => (
+                      <TableRow key={item.cliente_id}>
+                        <TableCell className="font-medium">{item.cliente_nombre}</TableCell>
+                        <TableCell>
+                          {item.estado_al_dia ? (
+                            <Badge variant="default" className="bg-emerald-500 hover:bg-emerald-600">al dia</Badge>
+                          ) : (
+                            <Badge variant="destructive">con atraso</Badge>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {serviciosData.results.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={2} className="text-center">No hay clientes con servicios activos</TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+                
+                {/* Pagination Controls */}
+                <div className="flex items-center justify-between mt-4">
+                  <span className="text-sm text-muted-foreground">
+                    Total: {serviciosData.count} clientes
+                  </span>
+                  <div className="flex gap-2">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => handlePageChangeServicios(pageServicios - 1)}
+                      disabled={!serviciosData.previous}
+                    >
+                      Anterior
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => handlePageChangeServicios(pageServicios + 1)}
+                      disabled={!serviciosData.next}
+                    >
+                      Siguiente
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        <TabsContent value="graficos" className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-1">
             {/* Gráfico de líneas - Ventas mensuales */}
-            <Card className="md:col-span-2">
+            <Card>
               <CardHeader>
                 <CardTitle>Tendencia de Ventas Mensuales</CardTitle>
               </CardHeader>
@@ -507,123 +537,6 @@ export function SistemaReporteria() {
           </div>
         </TabsContent>
 
-        <TabsContent value="detallado" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Reporte Detallado de Lotes Reservados</CardTitle>
-              <CardDescription>Información completa según el formato requerido</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-6">
-                {/* Tabla resumen como en la imagen */}
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="bg-muted">DESCRIPCIÓN</TableHead>
-                        <TableHead className="bg-muted">LOTES</TableHead>
-                        <TableHead className="bg-muted">RECIBIDO POR RECIBIR</TableHead>
-                        <TableHead className="bg-muted">TOTAL</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      <TableRow>
-                        <TableCell className="font-medium">Reservados</TableCell>
-                        <TableCell>{reporteData.lotesReservados}</TableCell>
-                        <TableCell>Q 0.00</TableCell>
-                        <TableCell>Q {reporteData.valorReservas.toLocaleString('es-GT', {minimumFractionDigits: 2})}</TableCell>
-                      </TableRow>
-                      <TableRow>
-                        <TableCell className="font-medium">Cancelados / Disponibles</TableCell>
-                        <TableCell>{reporteData.lotesDisponibles}</TableCell>
-                        <TableCell>Q 0.00</TableCell>
-                        <TableCell>Q 0.00</TableCell>
-                      </TableRow>
-                      <TableRow>
-                        <TableCell className="font-medium">Financiados</TableCell>
-                        <TableCell>{reporteData.lotesFinanciados}</TableCell>
-                        <TableCell>Q {reporteData.valorPendienteCobro.toLocaleString('es-GT', {minimumFractionDigits: 2})}</TableCell>
-                        <TableCell>Q {(reporteData.valorEnganches + reporteData.valorCapitalCobrado).toLocaleString('es-GT', {minimumFractionDigits: 2})}</TableCell>
-                      </TableRow>
-                      <TableRow>
-                        <TableCell className="font-medium">Pagados / Escriturados</TableCell>
-                        <TableCell>{reporteData.lotesPagados}</TableCell>
-                        <TableCell>Q 0.00</TableCell>
-                        <TableCell>Q {(reporteData.valorTotalVentas - (reporteData.valorEnganches + reporteData.valorCapitalCobrado + reporteData.valorPendienteCobro)).toLocaleString('es-GT', {minimumFractionDigits: 2})}</TableCell>
-                      </TableRow>
-                      <TableRow className="bg-muted">
-                        <TableCell className="font-bold">TOTAL PROYECTO</TableCell>
-                        <TableCell className="font-bold">{totalLotes}</TableCell>
-                        <TableCell className="font-bold">Q {reporteData.valorPendienteCobro.toLocaleString('es-GT', {minimumFractionDigits: 2})}</TableCell>
-                        <TableCell className="font-bold">Q {reporteData.valorTotalVentas.toLocaleString('es-GT', {minimumFractionDigits: 2})}</TableCell>
-                      </TableRow>
-                    </TableBody>
-                  </Table>
-                </div>
-
-                {/* Valor de lotes financiados y pagados */}
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div>
-                    <h4 className="font-bold mb-4 text-center bg-chart-3 text-white p-2 rounded">
-                      VALOR LOTES FINANCIADOS Y PAGADOS TOTALMENTE
-                    </h4>
-                    <Table>
-                      <TableBody>
-                        <TableRow>
-                          <TableCell className="font-medium">ENGANCHES</TableCell>
-                          <TableCell>Q {reporteData.valorEnganches.toLocaleString('es-GT', {minimumFractionDigits: 2})}</TableCell>
-                        </TableRow>
-                        <TableRow>
-                          <TableCell className="font-medium">CAPITAL</TableCell>
-                          <TableCell>Q {reporteData.valorCapitalCobrado.toLocaleString('es-GT', {minimumFractionDigits: 2})}</TableCell>
-                        </TableRow>
-                        <TableRow>
-                          <TableCell className="font-medium">INTERESES</TableCell>
-                          <TableCell>Q {reporteData.valorInteresesCobrados.toLocaleString('es-GT', {minimumFractionDigits: 2})}</TableCell>
-                        </TableRow>
-                        <TableRow>
-                          <TableCell className="font-medium">YA ESCRITURADOS / PAGADOS</TableCell>
-                          <TableCell>Q {(reporteData.valorTotalVentas - (reporteData.valorEnganches + reporteData.valorCapitalCobrado + reporteData.valorPendienteCobro)).toLocaleString('es-GT', {minimumFractionDigits: 2})}</TableCell>
-                        </TableRow>
-                        <TableRow>
-                          <TableCell className="font-medium">LOTES RESERVADOS</TableCell>
-                          <TableCell>Q {reporteData.valorReservas.toLocaleString('es-GT', {minimumFractionDigits: 2})}</TableCell>
-                        </TableRow>
-                        <TableRow>
-                          <TableCell className="font-medium">POR RECIBIR</TableCell>
-                          <TableCell>Q {reporteData.valorPendienteCobro.toLocaleString('es-GT', {minimumFractionDigits: 2})}</TableCell>
-                        </TableRow>
-                        <TableRow className="bg-muted">
-                          <TableCell className="font-bold">TOTAL VENTA/PROYECTO</TableCell>
-                          <TableCell className="font-bold">
-                            Q{" "}
-                            {reporteData.valorTotalVentas.toLocaleString('es-GT', {minimumFractionDigits: 2})}
-                          </TableCell>
-                        </TableRow>
-                      </TableBody>
-                    </Table>
-                  </div>
-
-                  <div className="space-y-4">
-                    <Badge variant="outline" className="w-full justify-center p-2">
-                      Reporte generado el {new Date().toLocaleDateString()}
-                    </Badge>
-                    <div className="text-center space-y-2">
-                      <div className="text-sm text-muted-foreground">Período del reporte:</div>
-                      <div className="font-medium">
-                        {new Date(fechaInicio).toLocaleDateString()} - {new Date(fechaFin).toLocaleDateString()}
-                      </div>
-                    </div>
-                    <div className="text-center space-y-2">
-                      <div className="text-sm text-muted-foreground">Total de lotes en el proyecto:</div>
-                      <div className="text-2xl font-bold">{totalLotes}</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
       </Tabs>
       </>
       )}

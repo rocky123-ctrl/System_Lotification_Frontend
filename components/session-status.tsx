@@ -56,7 +56,7 @@ export function SessionStatus() {
       <div className="flex items-center gap-1">
         <div className={`w-2 h-2 rounded-full ${getStatusColor()}`}></div>
         <MousePointer2 className="h-3 w-3 text-muted-foreground ml-1" />
-        <span className="text-muted-foreground mr-1">Expiración en:</span>
+        <span className="text-muted-foreground mr-1">Inactividad:</span>
         {secondsRemaining > 0 ? (
           <span className="font-medium font-mono w-14 text-right inline-block">
             {formatTime(secondsRemaining)}

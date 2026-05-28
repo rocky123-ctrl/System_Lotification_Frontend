@@ -33,9 +33,10 @@ export interface LoteCreate {
   numero_lote: string
   metros_cuadrados: string
   valor_total: string
-  costo_instalacion: string
-  uso_lote: USO_LOTE
-  estado_disponibilidad: ESTADO_DISPONIBILIDAD
+  costo_instalacion?: string
+  uso_lote?: USO_LOTE
+  estado_disponibilidad?: ESTADO_DISPONIBILIDAD
+  activo?: boolean
 }
 
 export interface LoteUpdate {
@@ -61,6 +62,7 @@ export interface LotesFilters {
   metros_min?: number
   metros_max?: number
   solo_disponibles?: boolean
+  incluir_inactivos?: boolean
 }
 
 export interface LotesEstadisticas {
@@ -92,6 +94,7 @@ export const lotesService = {
       if (filters.metros_min) params.append('metros_min', filters.metros_min.toString())
       if (filters.metros_max) params.append('metros_max', filters.metros_max.toString())
       if (filters.solo_disponibles) params.append('solo_disponibles', 'true')
+      if (filters.incluir_inactivos) params.append('incluir_inactivos', 'true')
       if (filters.page) params.append('page', filters.page.toString())
     }
 

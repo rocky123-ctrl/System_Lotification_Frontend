@@ -19,7 +19,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import Link from "next/link"
-import { Search, Loader2, MapPin, Building2, Map, Pencil, Trash2 } from "lucide-react"
+import { Search, Loader2, MapPin, Building2, Map, Pencil, Trash2, AlertCircle } from "lucide-react"
 import { usePagination } from "@/hooks/use-pagination"
 import { lotesService, type Lote, type LoteCreate, type LoteUpdate, type USO_LOTE, type ESTADO_DISPONIBILIDAD } from "@/lib/lotes-service"
 import { lotificacionService, type Lotificacion } from "@/lib/lotificacion-service"
@@ -32,10 +32,12 @@ interface LoteDisplay {
   valor_total: number
   uso_lote: 'residencial' | 'comercial_y_bodega'
   estado_disponibilidad: 'disponible' | 'reservado' | 'financiado' | 'pagado' | 'escriturado'
+  activo: boolean
 }
 
 export function Lotes() {
   const [searchTerm, setSearchTerm] = useState("")
+  const [selectedManzanaFilter, setSelectedManzanaFilter] = useState<string>("all")
   const [selectedLotificacion, setSelectedLotificacion] = useState<number | null>(null)
   const [lotificaciones, setLotificaciones] = useState<Lotificacion[]>([])
   const [lotes, setLotes] = useState<LoteDisplay[]>([])
@@ -56,6 +58,7 @@ export function Lotes() {
     costo_instalacion: "5000",
     uso_lote: "residencial" as USO_LOTE,
     estado_disponibilidad: "disponible" as ESTADO_DISPONIBILIDAD,
+    activo: true,
   })
   const [editModalOpen, setEditModalOpen] = useState(false)
   const [editLoteId, setEditLoteId] = useState<number | null>(null)
@@ -73,6 +76,7 @@ export function Lotes() {
     costo_instalacion: "",
     uso_lote: "residencial" as USO_LOTE,
     estado_disponibilidad: "disponible" as ESTADO_DISPONIBILIDAD,
+    activo: true,
   })
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
   const [deleteLoteId, setDeleteLoteId] = useState<number | null>(null)
@@ -123,7 +127,7 @@ export function Lotes() {
     try {
       setIsLoadingLotes(true)
       setError(null)
-      const data = await lotesService.getLotes({ lotificacion: selectedLotificacion })
+      const data = await lotesService.getLotes({ lotificacion: selectedLotificacion, incluir_inactivos: true })
       const todosLotes: LoteDisplay[] = data.results.map(l => ({ 
         id: l.id, 
         manzana: l.manzana_nombre || `Manzana ${l.manzana}`, 
@@ -131,7 +135,8 @@ export function Lotes() {
         metros_cuadrados: parseFloat(l.metros_cuadrados), 
         valor_total: parseFloat(l.valor_total), 
         uso_lote: l.uso_lote,
-        estado_disponibilidad: l.estado_disponibilidad 
+        estado_disponibilidad: l.estado_disponibilidad,
+        activo: (l as any).activo !== false
       }))
       setLotes(todosLotes)
     } catch (err: any) {
@@ -174,12 +179,13 @@ export function Lotes() {
     }
   }, [editForm.manzanaId, editForm.numero_lote, editIdentificadorManual, manzanas, getLotificacionAbreviatura, editModalOpen])
 
-  // Filtrar lotes por término de búsqueda
+  // Filtrar lotes por término de búsqueda y manzana
   const filteredLotes = lotes.filter((lote) => {
     const matchesSearch =
       lote.manzana.toLowerCase().includes(searchTerm.toLowerCase()) ||
       lote.numero_lote.toLowerCase().includes(searchTerm.toLowerCase())
-    return matchesSearch
+    const matchesManzana = selectedManzanaFilter === "all" || lote.manzana === selectedManzanaFilter
+    return matchesSearch && matchesManzana
   })
 
   // Paginación con 10 items por página
@@ -210,6 +216,7 @@ export function Lotes() {
       costo_instalacion: "5000",
       uso_lote: "residencial",
       estado_disponibilidad: "disponible",
+      activo: true,
     })
     setCreateLotePrefill({ manzana: info.manzana, numero_lote: info.numero_lote })
     setCreateIdentificadorManual(false)
@@ -239,6 +246,7 @@ export function Lotes() {
         costo_instalacion: createLoteForm.costo_instalacion,
         uso_lote: createLoteForm.uso_lote,
         estado_disponibilidad: createLoteForm.estado_disponibilidad,
+        activo: createLoteForm.activo,
       }
       await lotesService.createLote(data)
       setIsCreateLoteOpen(false)
@@ -252,6 +260,7 @@ export function Lotes() {
         costo_instalacion: "5000",
         uso_lote: "residencial",
         estado_disponibilidad: "disponible",
+        activo: true,
       })
       loadLotes()
     } catch (err: any) {
@@ -391,6 +400,7 @@ export function Lotes() {
                       costo_instalacion: "1000",
                       uso_lote: "residencial",
                       estado_disponibilidad: "disponible",
+                      activo: true,
                     })
                     setCreateIdentificadorManual(false)
                     setIsCreateLoteOpen(true)
@@ -477,14 +487,27 @@ export function Lotes() {
                   {totalItems} lote{totalItems !== 1 ? 's' : ''} encontrado{totalItems !== 1 ? 's' : ''}
                 </CardDescription>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="relative">
+              <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                <Select value={selectedManzanaFilter} onValueChange={setSelectedManzanaFilter}>
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="Todas las manzanas" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas las manzanas</SelectItem>
+                    {manzanas.map((m) => (
+                      <SelectItem key={m.id} value={m.nombre}>
+                        {m.nombre}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <div className="relative flex-1">
                   <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                   <Input
-                    placeholder="Buscar por manzana o número..."
+                    placeholder="Buscar lote..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-8 w-full md:w-[300px]"
+                    className="pl-8 w-full md:w-[250px]"
                   />
                 </div>
               </div>
@@ -523,7 +546,12 @@ export function Lotes() {
                       {paginatedLotes.map((lote) => (
                         <TableRow key={lote.id}>
                           <TableCell className="font-medium">{lote.manzana}</TableCell>
-                          <TableCell>{lote.numero_lote}</TableCell>
+                          <TableCell>
+                            {lote.numero_lote}
+                            {!lote.activo && (
+                              <Badge variant="outline" className="ml-2 text-muted-foreground">Inactivo</Badge>
+                            )}
+                          </TableCell>
                           <TableCell>{lote.metros_cuadrados.toLocaleString('es-GT')} m²</TableCell>
                           <TableCell>Q {lote.valor_total.toLocaleString('es-GT', { minimumFractionDigits: 2 })}</TableCell>
                           <TableCell>{getEstadoBadge(lote)}</TableCell>
@@ -551,6 +579,7 @@ export function Lotes() {
                                       costo_instalacion: String((full as any).costo_instalacion ?? ""),
                                       uso_lote: (full as any).uso_lote ?? "residencial",
                                       estado_disponibilidad: (full as any).estado_disponibilidad ?? "disponible",
+                                      activo: (full as any).activo ?? true,
                                     })
                                     setEditIdentificadorManual(true) // By default, let's keep it manual when opening edit so it doesn't immediately overwrite the saved ID
                                   } catch {
@@ -740,12 +769,26 @@ export function Lotes() {
                   <SelectContent>
                     <SelectItem value="disponible">Disponible</SelectItem>
                     <SelectItem value="reservado">Reservado</SelectItem>
-                    <SelectItem value="financiado">Financiado</SelectItem>
-                    <SelectItem value="pagado">Pagado</SelectItem>
-                    <SelectItem value="escriturado">Escriturado</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+            <div className="space-y-2">
+              <Label>¿Lote Activo?</Label>
+              <Select
+                value={createLoteForm.activo ? "true" : "false"}
+                onValueChange={(v) =>
+                  setCreateLoteForm((f) => ({ ...f, activo: v === "true" }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="true">Sí (Activo)</SelectItem>
+                  <SelectItem value="false">No (Inactivo)</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <DialogFooter>
               <Button
@@ -810,7 +853,7 @@ export function Lotes() {
                     costo_instalacion: editForm.costo_instalacion,
                     uso_lote: editForm.uso_lote,
                     estado_disponibilidad: editForm.estado_disponibilidad,
-                    activo: true,
+                    activo: editForm.activo,
                   }
                   await lotesService.updateLote(editLoteId, payload)
                   loadLotes()
@@ -932,12 +975,26 @@ export function Lotes() {
                     <SelectContent>
                       <SelectItem value="disponible">Disponible</SelectItem>
                       <SelectItem value="reservado">Reservado</SelectItem>
-                      <SelectItem value="financiado">Financiado</SelectItem>
-                      <SelectItem value="pagado">Pagado</SelectItem>
-                      <SelectItem value="escriturado">Escriturado</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
+              </div>
+              <div className="space-y-2">
+                <Label>¿Lote Activo?</Label>
+                <Select
+                  value={editForm.activo ? "true" : "false"}
+                  onValueChange={(v) =>
+                    setEditForm((f) => ({ ...f, activo: v === "true" }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="true">Sí (Activo)</SelectItem>
+                    <SelectItem value="false">No (Inactivo)</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               {editError && <p className="text-sm text-destructive">{editError}</p>}
               <DialogFooter>
@@ -955,9 +1012,13 @@ export function Lotes() {
       <Dialog open={deleteModalOpen} onOpenChange={(open) => { setDeleteModalOpen(open); if (!open) setDeleteLoteId(null) }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>¿Eliminar lote?</DialogTitle>
-            <DialogDescription>
-              Esta acción no se puede deshacer. El lote se eliminará por completo.
+            <DialogTitle className="flex items-center text-destructive">
+              <AlertCircle className="h-5 w-5 mr-2" />
+              ¿Eliminar lote permanentemente?
+            </DialogTitle>
+            <DialogDescription className="pt-2 text-foreground">
+              <strong>¡ADVERTENCIA!</strong><br />
+              Una vez que acepte, todos los registros del lote serán borrados en cascada (incluyendo ventas, financiamientos, pagos y cuotas). Esta acción NO se puede deshacer.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
