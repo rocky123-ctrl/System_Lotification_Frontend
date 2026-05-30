@@ -498,6 +498,21 @@ export default function ServiciosPage() {
     }
   }
 
+  const handleDeleteBilletera = async (id: number) => {
+    if (!confirm("¿Está seguro de eliminar esta billetera? Esta acción eliminará en cascada todas las configuraciones de servicios y pagos asociados a los lotes de este cliente. ¡Esta acción no se puede deshacer!")) return
+    try {
+      await serviciosService.deleteBilletera(id)
+      toast.success("Billetera eliminada exitosamente")
+      if (selectedBilletera?.id === id) {
+        handleVolver()
+      }
+      const wallets = await serviciosService.getBilleteras()
+      setBilleteras(wallets)
+    } catch (error) {
+      toast.error("Error al eliminar la billetera")
+    }
+  }
+
   const openQuickPay = (record: PagoServicio) => {
     setPaymentMode('edit')
     setIsQuickPay(true)
@@ -619,9 +634,14 @@ export default function ServiciosPage() {
                                   </div>
                                 </TableCell>
                                 <TableCell className="text-right">
-                                  <Button onClick={() => handleSelectBilletera(wallet)}>
-                                    Entrar a Billetera
-                                  </Button>
+                                  <div className="flex items-center justify-end gap-2">
+                                    <Button onClick={() => handleSelectBilletera(wallet)}>
+                                      Entrar a Billetera
+                                    </Button>
+                                    <Button variant="destructive" size="icon" onClick={() => handleDeleteBilletera(wallet.id)}>
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </div>
                                 </TableCell>
                               </TableRow>
                             ))
@@ -1028,11 +1048,11 @@ export default function ServiciosPage() {
               <div className="grid gap-4 py-4">
                 <div className="grid gap-2">
                   <Label>Nombre del Servicio</Label>
-                  <Input value={newService.nombre} onChange={(e) => setNewService({ ...newService, nombre: e.target.value })} />
+                  <Input value={newService.nombre} onChange={(e) => setNewService({ ...newService, nombre: e.target.value })} className="border-slate-300 focus:border-primary" />
                 </div>
                 <div className="grid gap-2">
                   <Label>Precio Base (Q)</Label>
-                  <Input type="number" value={newService.precio_base_defecto} onChange={(e) => setNewService({ ...newService, precio_base_defecto: Number(e.target.value) })} />
+                  <Input type="number" value={newService.precio_base_defecto} onChange={(e) => setNewService({ ...newService, precio_base_defecto: Number(e.target.value) })} className="border-slate-300 focus:border-primary" />
                 </div>
                 <div className="grid gap-2">
                   <Label>Icono</Label>
@@ -1095,7 +1115,7 @@ export default function ServiciosPage() {
                     {svc.selected && (
                       <div className="ml-7 flex items-center gap-3">
                         <Label className="text-sm">Precio (Q):</Label>
-                        <Input type="number" value={svc.precio} onChange={(e) => updateTempPrice(svc.servicioId, Number(e.target.value))} className="h-8 w-24" />
+                        <Input type="number" value={svc.precio} onChange={(e) => updateTempPrice(svc.servicioId, Number(e.target.value))} className="h-8 w-24 border-slate-300 focus:border-primary" />
                       </div>
                     )}
                   </div>
@@ -1156,7 +1176,7 @@ export default function ServiciosPage() {
                         <div className="grid gap-2">
                           <Label className="text-xs font-bold uppercase tracking-wider text-slate-500">Fecha de Inicio</Label>
                           <Input 
-                            className="h-11" 
+                            className="h-11 border-slate-300 focus:border-primary" 
                             type="date" 
                             value={paymentMonth} 
                             onChange={(e) => {
@@ -1172,7 +1192,7 @@ export default function ServiciosPage() {
                         <div className="grid gap-2">
                           <Label className="text-xs font-bold uppercase tracking-wider text-slate-500">Fecha Límite</Label>
                           <Input 
-                            className="h-11" 
+                            className="h-11 border-slate-300 focus:border-primary" 
                             type="date" 
                             value={fechaLimite} 
                             onChange={(e) => {
@@ -1210,7 +1230,7 @@ export default function ServiciosPage() {
                             type="number"
                             value={montoCobrado}
                             onChange={(e) => setMontoCobrado(Number(e.target.value))}
-                            className="h-11 bg-slate-50 font-bold"
+                            className="h-11 bg-slate-50 font-bold border-slate-300 focus:border-primary"
                             disabled={true}
                           />
                         </div>
@@ -1222,21 +1242,24 @@ export default function ServiciosPage() {
                   {(paymentState === 'Pagado' || isQuickPay) && (
                     <div className={`space-y-5 ${!isQuickPay ? 'pt-6 border-t' : ''}`}>
 
-                      {/* Only show Mora if it's Vencido or already has Mora */}
-                      {(paymentRecord?.estado === 'Vencido' || hasMora) && (
+                      {/* Only show Mora if it's Vencido */}
+                      {(paymentState === 'Vencido') && (
                         <div className="bg-amber-50 p-4 rounded-xl border border-amber-100 space-y-4">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
                               <AlertCircle className="h-4 w-4 text-amber-600" />
                               <Label htmlFor="mora" className="text-sm font-semibold text-amber-900">Aplicar recargo por Mora</Label>
                             </div>
-                            <Switch
+                            <input
+                              type="checkbox"
                               id="mora"
                               checked={hasMora}
-                              onCheckedChange={(val) => {
+                              onChange={(e) => {
+                                const val = e.target.checked
                                 setHasMora(val)
                                 setMontoPagar(montoCobrado + (val ? mora : 0))
                               }}
+                              className="w-4 h-4"
                             />
                           </div>
 
@@ -1251,7 +1274,7 @@ export default function ServiciosPage() {
                                   setMora(m)
                                   setMontoPagar(montoCobrado + m)
                                 }}
-                                className="h-10 border-amber-200 focus:ring-amber-500"
+                                className="h-10 border-slate-300 focus:border-primary focus:ring-amber-500"
                               />
                             </div>
                           )}
@@ -1269,7 +1292,7 @@ export default function ServiciosPage() {
                             type="number"
                             value={montoPagar}
                             onChange={(e) => setMontoPagar(Number(e.target.value))}
-                            className="h-14 pl-9 text-2xl font-black border-2 border-primary/20 focus:border-primary transition-all"
+                            className="h-14 pl-9 text-2xl font-black border-2 border-slate-300 focus:border-primary transition-all"
                           />
                         </div>
                         <p className="text-[10px] text-muted-foreground italic text-center uppercase tracking-tighter">Debe coincidir exactamente con el total</p>
@@ -1278,7 +1301,7 @@ export default function ServiciosPage() {
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
                           <Label className="text-xs font-bold uppercase tracking-wider text-slate-500">Fecha de Pago</Label>
-                          <Input className="h-11" type="date" value={fechaPago} onChange={(e) => setFechaPago(e.target.value)} />
+                          <Input className="h-11 border-slate-300 focus:border-primary" type="date" value={fechaPago} onChange={(e) => setFechaPago(e.target.value)} />
                         </div>
                         <div className="space-y-2">
                           <Label className="text-xs font-bold uppercase tracking-wider text-slate-500">Método de Pago</Label>
@@ -1378,12 +1401,18 @@ export default function ServiciosPage() {
                       <AlertCircle className="h-4 w-4 text-amber-600" />
                       <Label htmlFor="mora_directa" className="text-sm font-semibold text-amber-900">¿Aplica Mora?</Label>
                     </div>
-                    <Switch id="mora_directa" checked={hasMora} onCheckedChange={setHasMora} />
+                    <input 
+                      type="checkbox" 
+                      id="mora_directa" 
+                      checked={hasMora} 
+                      onChange={(e) => setHasMora(e.target.checked)} 
+                      className="w-4 h-4"
+                    />
                   </div>
                   {hasMora && (
                     <div className="space-y-2 animate-in slide-in-from-top-1 duration-200">
                       <Label className="text-xs font-bold uppercase text-amber-700">Monto de Mora (Q)</Label>
-                      <Input type="number" value={mora} onChange={(e) => setMora(Number(e.target.value))} className="h-10 border-amber-200 focus:ring-amber-500" />
+                      <Input type="number" value={mora} onChange={(e) => setMora(Number(e.target.value))} className="h-10 border-slate-300 focus:border-primary focus:ring-amber-500" />
                     </div>
                   )}
                 </div>
@@ -1391,7 +1420,7 @@ export default function ServiciosPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label className="text-xs font-bold uppercase tracking-wider text-slate-500">Fecha de Pago</Label>
-                    <Input className="h-11" type="date" value={fechaPago} onChange={(e) => setFechaPago(e.target.value)} />
+                    <Input className="h-11 border-slate-300 focus:border-primary" type="date" value={fechaPago} onChange={(e) => setFechaPago(e.target.value)} />
                   </div>
                   <div className="space-y-2">
                     <Label className="text-xs font-bold uppercase tracking-wider text-slate-500">Método de Pago</Label>

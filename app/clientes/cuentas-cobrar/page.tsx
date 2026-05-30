@@ -34,18 +34,15 @@ export default function CuentasPorCobrarPage() {
   const [selectedClient, setSelectedClient] = useState<{ id: number, nombre: string } | null>(null)
   const [selectedVenta, setSelectedVenta] = useState<Venta | null>(null)
   const [cuotas, setCuotas] = useState<Cuota[]>([])
-  const [bitacora, setBitacora] = useState<BitacoraCambio[]>([])
   const [loadingDetails, setLoadingDetails] = useState(false)
   
+  const [ventasPage, setVentasPage] = useState(1)
+  const [ventasTotal, setVentasTotal] = useState(0)
+
   const [cuotasPage, setCuotasPage] = useState(1)
   const [cuotasTotal, setCuotasTotal] = useState(0)
   const [cuotasAnio, setCuotasAnio] = useState('all')
   const [cuotasMes, setCuotasMes] = useState('all')
-  
-  const [bitacoraPage, setBitacoraPage] = useState(1)
-  const [bitacoraTotal, setBitacoraTotal] = useState(0)
-  const [bitacoraAnio, setBitacoraAnio] = useState('all')
-  const [bitacoraMes, setBitacoraMes] = useState('all')
 
   const years = Array.from({ length: 6 }, (_, i) => (new Date().getFullYear() - 1 + i).toString())
   const months = [
@@ -59,8 +56,8 @@ export default function CuentasPorCobrarPage() {
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false)
   const [selectedInstallment, setSelectedInstallment] = useState<Cuota | null>(null)
   const [montoMora, setMontoMora] = useState<number>(0)
+  const [incluirMora, setIncluirMora] = useState(false)
   const [metodoPago, setMetodoPago] = useState<'Efectivo' | 'Tarjeta' | 'Transferencia' | 'Depósito'>('Efectivo')
-  const [referencia, setReferencia] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const fetchLotificaciones = useCallback(async () => {
@@ -84,17 +81,23 @@ export default function CuentasPorCobrarPage() {
     try {
       setLoadingVentas(true)
       const res = await ventasService.getHistorialVentas({ 
-        all: true, 
+        all: true,
+        page: ventasPage,
         estado: 'ACTIVAS', 
         search,
         lotificacion: selectedLotificacionId
       })
       setVentas(res.results)
+      setVentasTotal(res.count)
     } catch (error) {
       toast.error('Error al cargar clientes')
     } finally {
       setLoadingVentas(false)
     }
+  }, [search, selectedLotificacionId, ventasPage])
+
+  useEffect(() => {
+    setVentasPage(1)
   }, [search, selectedLotificacionId])
 
   useEffect(() => {
@@ -120,30 +123,12 @@ export default function CuentasPorCobrarPage() {
     }
   }
 
-  const loadBitacora = async () => {
-    if (!selectedVenta) return
-    try {
-      const res = await cuentasCobrarService.getBitacoraByVenta(selectedVenta.id, { 
-        page: bitacoraPage, 
-        anio: bitacoraAnio, 
-        mes: bitacoraMes 
-      })
-      setBitacora(res.results)
-      setBitacoraTotal(res.count)
-    } catch (error) {
-      toast.error('Error al cargar bitácora')
-    }
-  }
-
   const loadVentaDetails = async (venta: Venta) => {
     setSelectedVenta(venta)
     setViewMode('details')
     setCuotasPage(1)
-    setBitacoraPage(1)
     setCuotasAnio('all')
     setCuotasMes('all')
-    setBitacoraAnio('all')
-    setBitacoraMes('all')
   }
 
   useEffect(() => {
@@ -151,12 +136,6 @@ export default function CuentasPorCobrarPage() {
       loadCuotas()
     }
   }, [viewMode, selectedVenta, cuotasPage, cuotasAnio, cuotasMes])
-
-  useEffect(() => {
-    if (viewMode === 'details' && selectedVenta) {
-      loadBitacora()
-    }
-  }, [viewMode, selectedVenta, bitacoraPage, bitacoraAnio, bitacoraMes])
 
   const handleSelectClient = (client: { id: number, nombre: string }) => {
     setSelectedClient(client)
@@ -195,7 +174,7 @@ export default function CuentasPorCobrarPage() {
     setSelectedInstallment(cuota)
     setMontoMora(0)
     setMetodoPago('Efectivo')
-    setReferencia('')
+    setIncluirMora(false)
     setIsPaymentModalOpen(true)
   }
 
@@ -253,9 +232,8 @@ export default function CuentasPorCobrarPage() {
       const pagoData: Pago = {
         cuota: selectedInstallment.id,
         monto_base: selectedInstallment.monto_cuota,
-        monto_mora: montoMora.toString(),
+        monto_mora: (incluirMora && selectedInstallment.estado === 'Vencido') ? montoMora.toString() : "0",
         metodo_pago: metodoPago,
-        referencia: referencia
       }
       await cuentasCobrarService.registrarPago(pagoData)
       toast.success('Pago registrado exitosamente')
@@ -379,6 +357,32 @@ export default function CuentasPorCobrarPage() {
                       )}
                     </TableBody>
                   </Table>
+                  
+                  {ventasTotal > 10 && (
+                    <div className="bg-slate-50 px-4 py-3 border-t flex items-center justify-between">
+                      <p className="text-xs text-muted-foreground">
+                        Mostrando clientes de la página {ventasPage} ({ventasTotal} ventas totales)
+                      </p>
+                      <div className="flex gap-2">
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          disabled={ventasPage === 1}
+                          onClick={() => setVentasPage(prev => prev - 1)}
+                        >
+                          Anterior
+                        </Button>
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          disabled={ventasPage * 10 >= ventasTotal}
+                          onClick={() => setVentasPage(prev => prev + 1)}
+                        >
+                          Siguiente
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -429,20 +433,14 @@ export default function CuentasPorCobrarPage() {
                       <div className="flex justify-between text-sm">
                         <span className="text-muted-foreground">Valor Final:</span>
                         <span className="font-bold text-lg">
-                          Q {(Number(venta.valor_lote) + (venta.acepta_instalacion ? Number(venta.lote_costo_instalacion || 0) : 0)).toFixed(2)}
+                          Q {Number(venta.valor_lote).toFixed(2)}
                         </span>
                       </div>
-                      
-                      {venta.acepta_instalacion && (
-                        <div className="text-[10px] text-emerald-600 font-medium px-2 py-1 bg-emerald-50 rounded border border-emerald-100 inline-block">
-                          Incluye Costo de Instalación (Q {Number(venta.lote_costo_instalacion).toFixed(2)})
-                        </div>
-                      )}
                       
                       {venta.tipo_pago === 'FINANCIADO' && (
                         <div className="space-y-2 border-t pt-3">
                           <div className="flex justify-between text-sm">
-                            <span className="text-muted-foreground">Enganche:</span>
+                            <span className="text-muted-foreground">Enganche + Costo de Instalacion:</span>
                             <span className="font-medium text-slate-700">Q {Number(venta.enganche).toFixed(2)}</span>
                           </div>
                           <div className="flex justify-between text-sm">
@@ -522,34 +520,26 @@ export default function CuentasPorCobrarPage() {
                     <span className="text-emerald-600 text-left font-medium">Precio Lote:</span>
                     <span className="text-emerald-800 text-right font-bold">Q {Number(selectedVenta.valor_lote).toFixed(2)}</span>
                     
-                    {selectedVenta.acepta_instalacion && (
-                      <>
-                        <span className="text-emerald-600 text-left font-medium">Instalación:</span>
-                        <span className="text-emerald-800 text-right font-bold">Q {Number(selectedVenta.lote_costo_instalacion).toFixed(2)}</span>
-                      </>
-                    )}
+                    
                     
                     <span className="text-emerald-600 text-left font-medium text-base pt-2">Total Pagado:</span>
                     <span className="text-emerald-800 text-right font-bold text-xl pt-2">
-                      Q {(Number(selectedVenta.valor_lote) + (selectedVenta.acepta_instalacion ? Number(selectedVenta.lote_costo_instalacion || 0) : 0)).toFixed(2)}
+                      Q {Number(selectedVenta.valor_lote).toFixed(2)}
                     </span>
                   </div>
                 </div>
               ) : (
                 <>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
                     <Card className="bg-slate-50 border-slate-200">
                       <CardContent className="p-4">
                         <p className="text-xs text-muted-foreground font-semibold uppercase">Valor Total</p>
-                        <p className="text-xl font-bold">Q {(Number(selectedVenta.valor_lote) + (selectedVenta.acepta_instalacion ? Number(selectedVenta.lote_costo_instalacion || 0) : 0)).toFixed(2)}</p>
-                        {selectedVenta.acepta_instalacion && (
-                          <p className="text-[10px] text-emerald-600 font-medium">Incluye Instalación Q {Number(selectedVenta.lote_costo_instalacion).toFixed(2)}</p>
-                        )}
+                        <p className="text-xl font-bold">Q {Number(selectedVenta.valor_lote).toFixed(2)}</p>
                       </CardContent>
                     </Card>
                     <Card className="bg-slate-50 border-slate-200">
                       <CardContent className="p-4">
-                        <p className="text-xs text-muted-foreground font-semibold uppercase">Enganche Pagado</p>
+                        <p className="text-xs text-muted-foreground font-semibold uppercase">Enganche + Costo de Instalacion</p>
                         <p className="text-xl font-bold text-emerald-600">Q {Number(selectedVenta.enganche).toFixed(2)}</p>
                       </CardContent>
                     </Card>
@@ -558,6 +548,12 @@ export default function CuentasPorCobrarPage() {
                         <p className="text-xs text-muted-foreground font-semibold uppercase">Monto Financiado</p>
                         <p className="text-xl font-bold text-indigo-600">Q {Number(selectedVenta.monto_financiar).toFixed(2)}</p>
                         <p className="text-[10px] text-indigo-500 font-medium">{selectedVenta.plazo_meses} meses al {selectedVenta.tasa_interes_anual}%</p>
+                      </CardContent>
+                    </Card>
+                    <Card className="bg-slate-50 border-slate-200">
+                      <CardContent className="p-4">
+                        <p className="text-xs text-muted-foreground font-semibold uppercase">Progreso de Financia</p>
+                        <p className="text-xl font-bold text-green-600">Q {Number(selectedVenta.total_pagado_calculado || 0).toFixed(2)}</p>
                       </CardContent>
                     </Card>
                   </div>
@@ -679,89 +675,6 @@ export default function CuentasPorCobrarPage() {
                     )}
                   </div>
 
-                  {/* Módulo de Cambios */}
-                  <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
-                    <div className="bg-slate-100 px-4 py-3 border-b flex flex-col md:flex-row md:items-center justify-between gap-3">
-                      <div className="flex items-center gap-2 text-slate-800 font-semibold">
-                        <RefreshCw className="w-4 h-4" />
-                        Historial de Movimientos / Auditoría
-                      </div>
-                      
-                      <div className="flex items-center gap-2">
-                        <Select value={bitacoraAnio} onValueChange={(val) => { setBitacoraAnio(val); setBitacoraPage(1); }}>
-                          <SelectTrigger className="w-[100px] h-8 text-xs bg-white">
-                            <SelectValue placeholder="Año" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="all">Año: Todos</SelectItem>
-                            {years.map(y => <SelectItem key={y} value={y}>{y}</SelectItem>)}
-                          </SelectContent>
-                        </Select>
-                        
-                        <Select value={bitacoraMes} onValueChange={(val) => { setBitacoraMes(val); setBitacoraPage(1); }}>
-                          <SelectTrigger className="w-[100px] h-8 text-xs bg-white">
-                            <SelectValue placeholder="Mes" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="all">Mes: Todos</SelectItem>
-                            {months.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="w-[200px]">Fecha</TableHead>
-                          <TableHead>Descripción</TableHead>
-                          <TableHead className="w-[200px]">Usuario</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {bitacora.map((cambio) => (
-                          <TableRow key={cambio.id}>
-                            <TableCell className="font-medium text-xs md:text-sm">{new Date(cambio.fecha).toLocaleString()}</TableCell>
-                            <TableCell className="text-xs md:text-sm">{cambio.descripcion}</TableCell>
-                            <TableCell className="text-xs md:text-sm">{cambio.usuario_nombre}</TableCell>
-                          </TableRow>
-                        ))}
-                        {bitacora.length === 0 && (
-                          <TableRow>
-                            <TableCell colSpan={3} className="text-center py-8 text-muted-foreground italic">
-                              No hay registros en la bitácora con los filtros seleccionados.
-                            </TableCell>
-                          </TableRow>
-                        )}
-                      </TableBody>
-                    </Table>
-                    
-                    {/* Pagination for Bitacora */}
-                    {bitacoraTotal > 10 && (
-                      <div className="bg-slate-50 px-4 py-3 border-t flex items-center justify-between">
-                        <p className="text-xs text-muted-foreground">
-                          Mostrando {bitacora.length} de {bitacoraTotal} registros
-                        </p>
-                        <div className="flex gap-2">
-                          <Button 
-                            variant="outline" 
-                            size="sm" 
-                            disabled={bitacoraPage === 1}
-                            onClick={() => setBitacoraPage(prev => prev - 1)}
-                          >
-                            Anterior
-                          </Button>
-                          <Button 
-                            variant="outline" 
-                            size="sm" 
-                            disabled={bitacoraPage * 10 >= bitacoraTotal}
-                            onClick={() => setBitacoraPage(prev => prev + 1)}
-                          >
-                            Siguiente
-                          </Button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
                 </>
               )}
             </div>
@@ -806,23 +719,37 @@ export default function CuentasPorCobrarPage() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="mora" className="text-right font-medium">Mora Adicional (Q)</Label>
-                    <Input 
-                      id="mora" 
-                      type="number" 
-                      min="0"
-                      step="0.01"
-                      value={montoMora} 
-                      onChange={(e) => setMontoMora(Number(e.target.value) || 0)}
-                      className="col-span-3" 
-                    />
-                  </div>
+                  {selectedInstallment.estado === 'Vencido' && (
+                    <div className="grid grid-cols-4 items-center gap-4">
+                      <div className="col-span-1 flex justify-end">
+                        <div className="flex items-center space-x-2">
+                          <input 
+                            type="checkbox" 
+                            id="incluirMora" 
+                            checked={incluirMora}
+                            onChange={(e) => setIncluirMora(e.target.checked)}
+                            className="w-4 h-4"
+                          />
+                          <Label htmlFor="incluirMora" className="font-medium">Mora (Q)</Label>
+                        </div>
+                      </div>
+                      <Input 
+                        id="mora" 
+                        type="number" 
+                        min="0"
+                        step="0.01"
+                        value={montoMora} 
+                        onChange={(e) => setMontoMora(Number(e.target.value) || 0)}
+                        disabled={!incluirMora}
+                        className="col-span-3 border-slate-300 focus:border-primary" 
+                      />
+                    </div>
+                  )}
 
                   <div className="grid grid-cols-4 items-center gap-4 border-t pt-4">
                     <Label className="text-right font-bold text-lg">Total</Label>
                     <div className="col-span-3 text-2xl font-bold text-green-600">
-                      Q {calculateTotalAmount().toFixed(2)}
+                      Q {((Number(selectedInstallment.monto_cuota) || 0) + (incluirMora && selectedInstallment.estado === 'Vencido' ? montoMora : 0)).toFixed(2)}
                     </div>
                   </div>
 
@@ -839,17 +766,6 @@ export default function CuentasPorCobrarPage() {
                         <SelectItem value="Depósito">Depósito</SelectItem>
                       </SelectContent>
                     </Select>
-                  </div>
-
-                  <div className="grid grid-cols-4 items-center gap-4 mt-2">
-                    <Label htmlFor="referencia" className="text-right font-medium">Referencia</Label>
-                    <Input 
-                      id="referencia" 
-                      placeholder="Ej. Cheque #123, Transferencia #..." 
-                      value={referencia} 
-                      onChange={(e) => setReferencia(e.target.value)}
-                      className="col-span-3" 
-                    />
                   </div>
                 </div>
               )}

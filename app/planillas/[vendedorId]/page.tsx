@@ -14,6 +14,7 @@ import { planillasService, type LiquidacionComision } from "@/lib/planillas-serv
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "sonner"
 import { useRouter, useParams, useSearchParams } from "next/navigation"
 
@@ -39,7 +40,7 @@ export default function HistorialVendedorPage() {
   // State for Payment Modal
   const [showPaymentModal, setShowPaymentModal] = useState(false)
   const [payingIds, setPayingIds] = useState<number[]>([]) // Array of IDs to pay
-  const [referenciaPago, setReferenciaPago] = useState("")
+  const [formaPago, setFormaPago] = useState<string>("EFECTIVO")
   const [paying, setPaying] = useState(false)
 
   const fetchLiquidaciones = useCallback(async () => {
@@ -99,14 +100,14 @@ export default function HistorialVendedorPage() {
   // Payment triggers
   const initiateSinglePayment = (id: number) => {
     setPayingIds([id])
-    setReferenciaPago("")
+    setFormaPago("EFECTIVO")
     setShowPaymentModal(true)
   }
 
   const initiateBulkPayment = () => {
     if (selectedIds.size === 0) return
     setPayingIds(Array.from(selectedIds))
-    setReferenciaPago("")
+    setFormaPago("EFECTIVO")
     setShowPaymentModal(true)
   }
 
@@ -116,10 +117,10 @@ export default function HistorialVendedorPage() {
     try {
       if (payingIds.length === 1) {
         // Individual
-        await planillasService.pagarLiquidacion(payingIds[0], referenciaPago)
+        await planillasService.pagarLiquidacion(payingIds[0], formaPago)
       } else {
         // Masivo
-        await planillasService.pagarLiquidacionesMultiples(payingIds, referenciaPago)
+        await planillasService.pagarLiquidacionesMultiples(payingIds, formaPago)
       }
       toast.success(payingIds.length > 1 ? "Pagos masivos registrados exitosamente" : "Pago registrado exitosamente")
       setShowPaymentModal(false)
@@ -278,7 +279,7 @@ export default function HistorialVendedorPage() {
                                 <span className="flex items-center gap-1 text-emerald-600 font-bold">
                                   <CheckCircle2 className="h-3 w-3" /> {formatDate(liq.fecha_pago || "")}
                                 </span>
-                                {liq.referencia_pago && <span className="italic">Ref: {liq.referencia_pago}</span>}
+                                {liq.forma_pago && <span className="italic uppercase text-slate-500">{liq.forma_pago}</span>}
                               </div>
                             )}
                           </TableCell>
@@ -322,16 +323,19 @@ export default function HistorialVendedorPage() {
             </DialogHeader>
             <div className="grid gap-4 py-4 mt-2">
               <div className="grid gap-2">
-                <Label htmlFor="referencia" className="font-bold">Referencia de Pago / Comprobante (Opcional)</Label>
-                <Input
-                  id="referencia"
-                  placeholder="Ej. Cheque #123, Transf. Bac..."
-                  value={referenciaPago}
-                  onChange={(e) => setReferenciaPago(e.target.value)}
-                  className="h-11 border-slate-300 focus-visible:ring-primary/20"
-                />
+                <Label htmlFor="forma_pago" className="font-bold">Forma de Pago</Label>
+                <Select value={formaPago} onValueChange={setFormaPago}>
+                  <SelectTrigger id="forma_pago" className="h-11 border-slate-300 focus-visible:ring-primary/20">
+                    <SelectValue placeholder="Seleccione forma de pago" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="EFECTIVO">Efectivo</SelectItem>
+                    <SelectItem value="TRANSFERENCIA">Transferencia</SelectItem>
+                    <SelectItem value="DEPOSITO">Depósito</SelectItem>
+                  </SelectContent>
+                </Select>
                 <p className="text-[11px] text-muted-foreground mt-1">
-                  Se aplicará esta referencia a {payingIds.length === 1 ? "la comisión seleccionada" : "todas las comisiones seleccionadas"}. Las comisiones pasarán a estado <strong>PAGADO</strong>.
+                  Se registrará que este pago fue realizado vía {formaPago.toLowerCase()}. Las comisiones pasarán a estado <strong>PAGADO</strong>.
                 </p>
               </div>
             </div>

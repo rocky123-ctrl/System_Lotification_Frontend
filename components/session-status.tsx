@@ -5,7 +5,7 @@ import { useAuth } from '@/contexts/auth-context'
 import { Button } from '@/components/ui/button'
 import { Clock, CheckCircle, AlertCircle, MousePointer2 } from 'lucide-react'
 
-const INACTIVITY_TIMEOUT_SEC = 20 * 60 // 20 minutos
+const INACTIVITY_TIMEOUT_SEC = 10 * 60 // 10 minutos
 
 export function SessionStatus() {
   const { user, isAuthenticated } = useAuth()

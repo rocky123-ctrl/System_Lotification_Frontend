@@ -153,6 +153,7 @@ export function SistemaReporteria() {
 
   const dataVentasMensuales = reporteData?.dataVentasMensuales || []
   const resumenPorManzana = reporteData?.resumenPorManzana || []
+  const ventasPorVendedor = reporteData?.ventasPorVendedor || []
 
   const totalLotes = reporteData 
     ? reporteData.lotesDisponibles + reporteData.lotesFinanciados + reporteData.lotesReservados + reporteData.lotesPagados 
@@ -282,9 +283,10 @@ export function SistemaReporteria() {
 
       {/* Tabs de reportes */}
       <Tabs defaultValue="resumen" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="resumen">Resumen General</TabsTrigger>
           <TabsTrigger value="financiero">Reporte Financiero</TabsTrigger>
+          <TabsTrigger value="vendedores">Vendedores</TabsTrigger>
           <TabsTrigger value="graficos">Gráficos</TabsTrigger>
         </TabsList>
 
@@ -508,6 +510,41 @@ export function SistemaReporteria() {
             </Card>
           )}
         </TabsContent>
+
+        <TabsContent value="vendedores" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Ventas por Vendedor</CardTitle>
+              <CardDescription>Resumen de ventas concretadas y monto total por cada vendedor en el periodo seleccionado.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Vendedor</TableHead>
+                    <TableHead className="text-center">Cantidad de Ventas</TableHead>
+                    <TableHead className="text-right">Monto Total Vendido</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {ventasPorVendedor.map((item, i) => (
+                    <TableRow key={i}>
+                      <TableCell className="font-bold">{item.vendedor}</TableCell>
+                      <TableCell className="text-center">{item.ventas}</TableCell>
+                      <TableCell className="text-right">Q {item.monto.toLocaleString('es-GT', {minimumFractionDigits: 2})}</TableCell>
+                    </TableRow>
+                  ))}
+                  {ventasPorVendedor.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={3} className="text-center text-muted-foreground h-24">No hay ventas registradas en el periodo para este proyecto.</TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
 
         <TabsContent value="graficos" className="space-y-4">
           <div className="grid gap-4 md:grid-cols-1">

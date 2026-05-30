@@ -13,8 +13,12 @@ import { Trash2, AlertCircle, Search } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
+import { useAuth } from "@/contexts/auth-context"
 
 export default function RegistrarClientePage() {
+  const { user } = useAuth()
+  const isSuperadmin = user?.role === 'Superadmin' || user?.role === 'Administrador' || user?.isSuperuser
+  
   const [stats, setStats] = useState<StatsType>({ activos: 0, inactivos: 0, total: 0 })
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [total, setTotal] = useState(0)
@@ -157,7 +161,7 @@ export default function RegistrarClientePage() {
 
   if (loading) {
     return (
-      <ProtectedRoute requiredRole="admin">
+      <ProtectedRoute>
         <DashboardLayout>
           <div className="flex justify-center items-center h-64">
             <div className="text-center">
@@ -171,7 +175,7 @@ export default function RegistrarClientePage() {
   }
 
   return (
-    <ProtectedRoute requiredRole="admin">
+    <ProtectedRoute>
       <DashboardLayout>
         <div className="space-y-6">
           {/* Sección Superior: Estadísticas */}
@@ -221,6 +225,7 @@ export default function RegistrarClientePage() {
             onPageChange={handlePageChange}
             onEdit={handleEdit}
             onDelete={handleDelete}
+            canDelete={isSuperadmin}
           />
 
           {/* Modal de Edición */}

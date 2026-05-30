@@ -113,6 +113,12 @@ export const serviciosService = {
     return apiRequest<LotStatusResponse[]>(`/servicios/billeteras/${billeteraId}/lots_status/`)
   },
 
+  async deleteBilletera(id: number): Promise<void> {
+    await apiRequest(`/servicios/billeteras/${id}/`, {
+      method: 'DELETE',
+    })
+  },
+
   // Configuraciones
   async getConfiguraciones(filters?: { lote_id?: number }): Promise<ConfiguracionServicioLote[]> {
     let url = '/servicios/configuraciones/'

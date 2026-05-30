@@ -54,6 +54,11 @@ export default function PlanillasPage() {
       return
     }
     
+    if (resumen.length === 0) {
+      toast.error("No se puede generar porque no hay registros en este periodo")
+      return
+    }
+    
     try {
       const blob = await planillasService.exportarExcel({
         anio,
@@ -66,9 +71,13 @@ export default function PlanillasPage() {
       document.body.appendChild(a)
       a.click()
       a.remove()
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error exporting:", err)
-      toast.error("Error al generar el archivo Excel")
+      if (err.message === 'NO_DATA') {
+        toast.error("No se puede generar porque no hay registros en el periodo seleccionado")
+      } else {
+        toast.error("Error al generar el archivo Excel")
+      }
     }
   }
 
@@ -96,7 +105,7 @@ export default function PlanillasPage() {
             </div>
             <Button 
               onClick={handleExportExcel} 
-              disabled={!isFilterComplete}
+              disabled={!isFilterComplete || resumen.length === 0}
               className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg disabled:bg-slate-300 disabled:text-slate-500"
             >
               <Download className="h-4 w-4" />

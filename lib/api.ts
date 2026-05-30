@@ -89,7 +89,12 @@ apiInstance.interceptors.request.use(
 
 // Interceptor de Respuesta
 apiInstance.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    if (typeof window !== 'undefined' && response.config.url && !response.config.url.includes('/auth/logout')) {
+      sessionStorage.setItem('last_interaction', Date.now().toString())
+    }
+    return response
+  },
   async (error: AxiosError) => {
     const { config, response } = error
     const originalRequest = config as InternalAxiosRequestConfig & { _retry?: boolean }

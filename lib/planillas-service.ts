@@ -9,9 +9,9 @@ export interface LiquidacionComision {
   fecha_venta: string
   lote_numero: string
   monto_pagado: string
-  fecha_pago: string | null
+  fecha_pago?: string
   es_pago_inmediato: boolean
-  referencia_pago: string | null
+  forma_pago?: string
   estado_pago: 'PENDIENTE' | 'PAGADO'
   fecha_creacion: string
 }
@@ -66,18 +66,18 @@ export const planillasService = {
   },
 
   // Registrar el pago de una liquidación
-  async pagarLiquidacion(id: number, referencia_pago?: string): Promise<LiquidacionComision> {
+  pagarLiquidacion: async (id: number, forma_pago?: string): Promise<LiquidacionComision> => {
     return apiRequest<LiquidacionComision>(`/ventas/liquidaciones/${id}/pagar_ahora/`, {
       method: 'POST',
-      body: JSON.stringify({ referencia_pago }),
+      body: JSON.stringify({ forma_pago }),
     })
   },
 
   // Registrar el pago masivo de liquidaciones
-  async pagarLiquidacionesMultiples(ids: number[], referencia_pago?: string): Promise<{ mensaje: string }> {
+  pagarLiquidacionesMultiples: async (ids: number[], forma_pago?: string): Promise<{ mensaje: string }> => {
     return apiRequest<{ mensaje: string }>(`/ventas/liquidaciones/pagar_multiples/`, {
       method: 'POST',
-      body: JSON.stringify({ ids, referencia_pago }),
+      body: JSON.stringify({ ids, forma_pago }),
     })
   },
 
@@ -97,6 +97,10 @@ export const planillasService = {
         'Authorization': `Bearer ${token}`,
       },
     })
+
+    if (response.status === 400) {
+      throw new Error('NO_DATA')
+    }
 
     if (!response.ok) {
       throw new Error('Error al exportar el archivo Excel')

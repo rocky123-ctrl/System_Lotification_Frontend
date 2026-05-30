@@ -158,7 +158,6 @@ export function Cotizaciones() {
         search: debouncedHistorySearchTerm,
         estado: historyEstadoFilter,
         lotificacion: selectedLotificacion || "",
-        all: activeTab === "gestion",
         page: page
       })
       setCotizacionesHistory(data.results)
@@ -172,7 +171,7 @@ export function Cotizaciones() {
   }, [debouncedHistorySearchTerm, activeTab, historyEstadoFilter, selectedLotificacion])
 
   useEffect(() => {
-    if (activeTab === "historial" || activeTab === "gestion") {
+    if (activeTab === "historial") {
       loadHistory(1)
     }
   }, [activeTab, loadHistory, historyEstadoFilter, selectedLotificacion])
@@ -211,21 +210,10 @@ export function Cotizaciones() {
     }
   }
 
-  const handleRestaurarCotizacion = async (id: number) => {
-    setIsRestaurando(id)
-    try {
-      await cotizacionesService.restaurarCotizacion(id)
-      toast.success("Cotización restaurada")
-      loadHistory(currentPageHistory)
-    } catch (err: any) {
-      toast.error(err.response?.data?.error || "Error al restaurar")
-    } finally {
-      setIsRestaurando(null)
-    }
-  }
+
 
   const handleEliminarCotizacion = async (id: number) => {
-    if (!confirm("¿Estás seguro de eliminar permanentemente esta cotización? Esta acción no se puede deshacer.")) return
+    if (!confirm("¿Estás seguro? Se borrarán los datos relacionados al registro que se desea borrar.")) return
     setIsEliminando(id)
     try {
       await cotizacionesService.eliminarCotizacion(id)
@@ -359,7 +347,7 @@ export function Cotizaciones() {
   })
 
 
-  const renderHistorialContent = (isGlobal: boolean) => {
+  const renderHistorialContent = () => {
     const totalPagesHistory = Math.ceil(totalItemsHistory / itemsPerPageServer)
     const startIndexHistory = (currentPageHistory - 1) * itemsPerPageServer + 1
     const endIndexHistory = Math.min(currentPageHistory * itemsPerPageServer, totalItemsHistory)
@@ -369,8 +357,8 @@ export function Cotizaciones() {
         <CardHeader>
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>
-              <CardTitle>{isGlobal ? "Gestión de Cotizaciones" : "Mis Cotizaciones"}</CardTitle>
-              <CardDescription>{isGlobal ? "Listado global de cotizaciones del sistema." : "Listado de prospectos e interesados atendidos."}</CardDescription>
+              <CardTitle>Mis Cotizaciones</CardTitle>
+              <CardDescription>Listado de prospectos e interesados atendidos.</CardDescription>
             </div>
             <div className="flex flex-col md:flex-row items-center gap-2">
               <Select value={historyEstadoFilter} onValueChange={setHistoryEstadoFilter}>
@@ -419,7 +407,6 @@ export function Cotizaciones() {
                       <TableHead className="font-semibold">Lote</TableHead>
                       <TableHead className="font-semibold text-center">Vencimiento</TableHead>
                       <TableHead className="font-semibold text-right">Valor Promesa</TableHead>
-                      {isGlobal && <TableHead className="font-semibold">Vendedor</TableHead>}
                       <TableHead className="font-semibold text-right">Acciones</TableHead>
                     </TableRow>
                 </TableHeader>
@@ -467,7 +454,6 @@ export function Cotizaciones() {
                       <TableCell className="text-right font-bold text-slate-800 text-sm">
                         Q {parseFloat(c.valor_lote || "0").toLocaleString('es-GT', { minimumFractionDigits: 2 })}
                       </TableCell>
-                      {isGlobal && <TableCell className="text-xs">{c.vendedor_nombre}</TableCell>}
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
                           {(() => {
@@ -475,18 +461,7 @@ export function Cotizaciones() {
                             const effectiveEstado = (c.estado === 'PENDIENTE' && isExpired) ? 'VENCIDA' : c.estado
 
                             if (effectiveEstado === 'RECHAZADA') {
-                              return (
-                                <Button 
-                                  variant="outline" 
-                                  size="sm" 
-                                  onClick={() => handleRestaurarCotizacion(c.id)}
-                                  disabled={isRestaurando === c.id}
-                                  className="h-8 border-amber-200 text-amber-700 hover:bg-amber-50"
-                                >
-                                  {isRestaurando === c.id ? <Loader2 className="w-4 h-4 animate-spin"/> : <History className="w-4 h-4 mr-1" />}
-                                  Restaurar
-                                </Button>
-                              )
+                              return null
                             }
 
                             return (
@@ -613,7 +588,7 @@ export function Cotizaciones() {
       </Card>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className={`grid w-full ${isSuperadmin ? 'grid-cols-3' : 'grid-cols-2'} mb-4`}>
+        <TabsList className={`grid w-full grid-cols-2 mb-4`}>
           <TabsTrigger value="cotizar" className="flex items-center gap-2">
             <FileText className="h-4 w-4" />
             Nueva Cotización
@@ -622,12 +597,6 @@ export function Cotizaciones() {
             <History className="h-4 w-4" />
             Mis Cotizaciones
           </TabsTrigger>
-          {isSuperadmin && (
-            <TabsTrigger value="gestion" className="flex items-center gap-2">
-               <MapPin className="h-4 w-4" />
-               Ver Todas (Admin)
-            </TabsTrigger>
-          )}
         </TabsList>
 
         <TabsContent value="cotizar" className="space-y-6">
@@ -731,14 +700,8 @@ export function Cotizaciones() {
         </TabsContent>
 
         <TabsContent value="historial" className="space-y-6">
-           {renderHistorialContent(false)}
+           {renderHistorialContent()}
         </TabsContent>
-
-        {isSuperadmin && (
-           <TabsContent value="gestion" className="space-y-6">
-             {renderHistorialContent(true)}
-           </TabsContent>
-        )}
       </Tabs>
 
       {/* MODAL DE DESCARGAR */}

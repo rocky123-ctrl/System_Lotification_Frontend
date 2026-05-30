@@ -13,12 +13,18 @@ export interface CalculoVentaPayload {
 
 export interface CalculoVentaResponse {
   valor_lote: number
+  valor_lote_con_descuento: number
+  valor_total: number
   valor_con_descuento: number
+  enganche_puro: number
+  faltante: number
   valor_financiar: number
   tasa_anual: number
   tasa_mensual_efectiva_porcentaje: number
   plazo_meses: number
   cuota_final_mensual: number
+  total_financia_mas_intereses: number
+  valor_intereses: number
   total_pagar_hoy: number
   error?: string
 }
@@ -56,6 +62,7 @@ export interface Venta {
   enganche: string
   descuento: string
   monto_financiar: string
+  total_pagado_calculado?: string
   tasa_interes_anual: string
   total_pagar_contado: string
   comision_monto: string

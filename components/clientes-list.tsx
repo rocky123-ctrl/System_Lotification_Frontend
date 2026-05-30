@@ -13,9 +13,10 @@ interface ClientesListProps {
   onPageChange: (page: number) => void
   onEdit: (cliente: Cliente) => void
   onDelete: (cliente: Cliente) => void
+  canDelete?: boolean
 }
 
-export function ClientesList({ clientes, total, currentPage, totalPages, onPageChange, onEdit, onDelete }: ClientesListProps) {
+export function ClientesList({ clientes, total, currentPage, totalPages, onPageChange, onEdit, onDelete, canDelete = true }: ClientesListProps) {
   return (
     <Card>
       <CardHeader>
@@ -64,14 +65,16 @@ export function ClientesList({ clientes, total, currentPage, totalPages, onPageC
                           >
                             <Edit className="h-4 w-4" />
                           </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => onDelete(cliente)}
-                            className="text-red-600 hover:text-red-800"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                          {canDelete && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => onDelete(cliente)}
+                              className="text-red-600 hover:text-red-800"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
                         </div>
                       </td>
                     </tr>

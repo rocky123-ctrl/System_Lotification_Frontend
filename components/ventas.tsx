@@ -304,7 +304,6 @@ export function Ventas() {
       const data = await ventasService.getHistorialVentas({
         ...historyFilters,
         search: debouncedHistorySearchTerm,
-        all: activeTab === "gestion",
         page: page
       })
       setVentasHistory(data.results)
@@ -313,8 +312,7 @@ export function Ventas() {
 
       const resumen = await ventasService.getResumenVentas({
         ...historyFilters,
-        search: debouncedHistorySearchTerm,
-        all: activeTab === "gestion"
+        search: debouncedHistorySearchTerm
       })
       setResumenVentas(resumen)
     } catch (err) {
@@ -326,45 +324,21 @@ export function Ventas() {
   }, [historyFilters, debouncedHistorySearchTerm, activeTab])
 
   useEffect(() => {
-    if (activeTab === "historial" || activeTab === "gestion") {
+    if (activeTab === "historial") {
       loadHistory(1)
     }
   }, [activeTab, loadHistory, historyFilters.estado])
 
   const handleEliminarVenta = async (id: number) => {
-    if (!confirm("¿Deseas cancelar esta venta? Esta acción borrará por completo los registros de cuentas por cobrar y servicios asociados a la venta, y el lote volverá a estar disponible.")) return
+    if (!confirm("¿Estás seguro? Se borrarán los datos relacionados al registro que se desea borrar.")) return
     
     try {
       await ventasService.eliminarVenta(id)
-      toast.success("Venta cancelada exitosamente")
+      toast.success("Venta eliminada exitosamente")
       loadHistory()
       loadLotesParaVenta()
     } catch (err: any) {
-      toast.error("Error al cancelar la venta: " + (err.message || "Servidor no respondió"))
-    }
-  }
-
-  const handleRestaurarVenta = async (id: number) => {
-    try {
-      await ventasService.restaurarVenta(id)
-      toast.success("Venta restaurada exitosamente")
-      loadHistory()
-      loadLotesParaVenta()
-    } catch (err: any) {
-      const errorMsg = err.response?.data?.error || err.message || "Error al restaurar"
-      toast.error("No se pudo restaurar: " + errorMsg)
-    }
-  }
-
-  const handleEliminarPermanenteVenta = async (id: number) => {
-    if (!confirm("¿ESTÁS COMPLETAMENTE SEGURO? Esta acción eliminará el registro de la venta permanentemente de la base de datos y no se podrá recuperar.")) return
-    
-    try {
-      await ventasService.eliminarPermanenteVenta(id)
-      toast.success("Registro eliminado permanentemente")
-      loadHistory()
-    } catch (err: any) {
-      toast.error("Error al eliminar permanentemente: " + (err.message || "Servidor no respondió"))
+      toast.error("Error al eliminar la venta: " + (err.message || "Servidor no respondió"))
     }
   }
 
@@ -382,14 +356,14 @@ export function Ventas() {
     }
   }
 
-  const renderHistorialContent = (isGlobal: boolean) => {
+  const renderHistorialContent = () => {
     const totalPagesHistory = Math.ceil(totalItemsHistory / itemsPerPageServer)
     const startIndexHistory = (currentPageHistory - 1) * itemsPerPageServer + 1
     const endIndexHistory = Math.min(currentPageHistory * itemsPerPageServer, totalItemsHistory)
 
     return (
     <>
-      <div className={`grid grid-cols-1 ${isGlobal ? 'md:grid-cols-2' : 'md:grid-cols-3'} gap-4`}>
+      <div className={`grid grid-cols-1 md:grid-cols-3 gap-4`}>
         <Card className="bg-gradient-to-br from-indigo-500 to-indigo-600 text-white border-none shadow-md">
           <CardContent className="flex items-center gap-4 p-6">
             <div className="p-3 bg-white/20 rounded-full">
@@ -402,19 +376,17 @@ export function Ventas() {
           </CardContent>
         </Card>
 
-        {!isGlobal && (
-          <Card className="bg-gradient-to-br from-emerald-500 to-emerald-600 text-white border-none shadow-md">
-            <CardContent className="flex items-center gap-4 p-6">
-              <div className="p-3 bg-white/20 rounded-full">
-                <DollarSign className="h-6 w-6" />
-              </div>
-              <div>
-                <p className="text-sm font-medium text-emerald-100 opacity-90">Total Comisiones</p>
-                <h3 className="text-2xl font-bold">Q {resumenVentas?.total_comisiones.toLocaleString('es-GT', { minimumFractionDigits: 2 }) || '0.00'}</h3>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+        <Card className="bg-gradient-to-br from-emerald-500 to-emerald-600 text-white border-none shadow-md">
+          <CardContent className="flex items-center gap-4 p-6">
+            <div className="p-3 bg-white/20 rounded-full">
+              <DollarSign className="h-6 w-6" />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-emerald-100 opacity-90">Total Comisiones</p>
+              <h3 className="text-2xl font-bold">Q {resumenVentas?.total_comisiones.toLocaleString('es-GT', { minimumFractionDigits: 2 }) || '0.00'}</h3>
+            </div>
+          </CardContent>
+        </Card>
 
         <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white border-none shadow-md">
           <CardContent className="flex items-center gap-4 p-6">
@@ -433,8 +405,8 @@ export function Ventas() {
         <CardHeader>
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>
-              <CardTitle>{isGlobal ? "Gestión Global de Ventas" : "Listado de Ventas"}</CardTitle>
-              <CardDescription>{isGlobal ? "Control total sobre todas las ventas del sistema." : "Auditoría de lotes vendidos por el usuario activo."}</CardDescription>
+              <CardTitle>Listado de Ventas</CardTitle>
+              <CardDescription>Auditoría de lotes vendidos por el usuario activo.</CardDescription>
             </div>
             <div className="flex flex-wrap items-center gap-3">
               <div className="w-[120px]">
@@ -468,7 +440,6 @@ export function Ventas() {
                     <SelectItem value="ACTIVAS">Activas (Comp. y Gen.)</SelectItem>
                     <SelectItem value="GENERADA">Generada</SelectItem>
                     <SelectItem value="COMPLETADA">Completada</SelectItem>
-                    <SelectItem value="CANCELADA">Cancelada</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -530,7 +501,7 @@ export function Ventas() {
                           {v.tipo_pago}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-xs">{isGlobal ? v.vendedor_nombre : "Yo"}</TableCell>
+                      <TableCell className="text-xs">Yo</TableCell>
                       <TableCell className="text-center">
                         <div className="flex flex-col">
                           <span className="font-semibold">Lote {v.lote_numero}</span>
@@ -549,8 +520,6 @@ export function Ventas() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
-                          {v.estado !== 'CANCELADA' ? (
-                            <>
                               <Button 
                                 variant="ghost" 
                                 size="sm" 
@@ -565,7 +534,7 @@ export function Ventas() {
                                 onClick={() => handleEliminarVenta(v.id)}
                                 className="text-red-600 hover:text-red-700 hover:bg-red-50 h-8 px-2"
                               >
-                                Cancelar
+                                Eliminar
                               </Button>
                               {v.estado === 'COMPLETADA' && v.lote_estado_disponibilidad !== 'escriturado' && (
                                 <Button 
@@ -577,27 +546,6 @@ export function Ventas() {
                                   Escriturar
                                 </Button>
                               )}
-                            </>
-                          ) : (
-                            <>
-                              <Button 
-                                variant="outline" 
-                                size="sm" 
-                                onClick={() => handleRestaurarVenta(v.id)}
-                                className="text-emerald-600 border-emerald-200 hover:bg-emerald-50 h-8 px-2"
-                              >
-                                Restaurar
-                              </Button>
-                              <Button 
-                                variant="ghost" 
-                                size="sm" 
-                                onClick={() => handleEliminarPermanenteVenta(v.id)}
-                                className="text-slate-500 hover:text-red-600 hover:bg-red-50 h-8 px-2"
-                              >
-                                Eliminar Registro
-                              </Button>
-                            </>
-                          )}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -707,7 +655,7 @@ export function Ventas() {
       </Card>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className={`grid w-full ${isSuperadmin ? 'grid-cols-3' : 'grid-cols-2'} mb-4`}>
+        <TabsList className={`grid w-full grid-cols-2 mb-4`}>
           <TabsTrigger value="venta" className="flex items-center gap-2">
             <ShoppingCart className="h-4 w-4" />
             Realizar Ventas
@@ -716,12 +664,6 @@ export function Ventas() {
             <History className="h-4 w-4" />
             Historial Personal
           </TabsTrigger>
-          {isSuperadmin && (
-            <TabsTrigger value="gestion" className="flex items-center gap-2">
-              <PlusCircle className="h-4 w-4" />
-              Gestión Global
-            </TabsTrigger>
-          )}
         </TabsList>
 
         <TabsContent value="venta" className="space-y-6">

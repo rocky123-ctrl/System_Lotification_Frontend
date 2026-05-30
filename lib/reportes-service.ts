@@ -26,6 +26,11 @@ export interface ReporteDashboardResponse {
     pagados: number
     valorTotal: number
   }[]
+  ventasPorVendedor: {
+    vendedor: string
+    ventas: number
+    monto: number
+  }[]
 }
 
 export const getReporteDashboard = async (
